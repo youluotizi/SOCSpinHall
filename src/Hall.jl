@@ -43,13 +43,12 @@ function Green1(
 
     Gw=-1.0.*Mk0
     for iw in 1:Nw
-        ww=w[iw]+1im*η
-        abs(ww)<1e-7 && (ww=(w[iw+1]-w[iw])/2+1im*η)
+        abs(w[iw])>1e-4 ? ww=w[iw]+1im*η : ww=1e-4+1im*η
         for iQ in 1:Nm
             Gw[iQ,iQ]=ww-Mk0[iQ,iQ]
             Gw[iQ+Nm,iQ+Nm]=-ww-Mk0[iQ+Nm,iQ+Nm]
         end
-        Xw[iw]=dot(Jx,inv(Gw),Jy)/ww
+        Xw[iw]=dot(Jx,inv(Gw),Jy)*1im/ww
     end
     return Xw
 end
@@ -59,7 +58,7 @@ function Green1(
     Jx::AbstractVector{ComplexF64},
     Jy::AbstractVector{ComplexF64};
     η::Float64=0.0,
-    w::Float64=5e-4
+    w::Float64=1e-4
 )
     Nm=round(Int,size(Mk0,1)/2)
     w2 = [w,-w]
@@ -74,7 +73,7 @@ function Green1(
         Xw[iw]=dot(Jx,inv(Gw),Jy)
     end
 
-    return (Xw[1]-Xw[2])/(2im*w-2*η)
+    return (Xw[1]-Xw[2])/(2*η-2im*w)
 end
 
 
@@ -95,42 +94,70 @@ function eigBdG(Mk0)
     return ben,bev
 end
 
-function Xspec1(w,Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
+function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     Nm=round(Int,length(ben)/2)
     Nw=length(w)
     Xw=zeros(ComplexF64,Nw)
 
-    v0=[ϕG,-1.0.*conj.(ϕG)]
+    v0=[ϕG; -1.0.*conj.(ϕG)]
     E0=ben[1]
     for iw in 1:Nw
-        ww=w[iw]+1im*η
-        abs(ww)<1e-6 && (ww=(w[iw+1]-w[iw])/2+1im*η)
+        abs(w[iw])>5e-6 ? ww=w[iw]+1im*η : ww=5e-6+1im*η
         tmp=0.0im
         @views for nn in 2:Nm
             tmp+=dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
             tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)/(ww+ben[nn]-E0)
         end
-        Xw[iw]=tmp/ww
+        Xw[iw]=tmp*1im/ww
     end
     return Xw
 end
 
-function Xspec2(w,Hx,Hy,ben,bev; η::Float64=0.0)
+function Xspec2(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     Nm=round(Int,length(ben)/2)
     Nw=length(w)
     Xw=zeros(ComplexF64,Nw)
 
-    v0=bev[:,1].*√2
+    v0=[ϕG; conj.(ϕG)]
     E0=ben[1]
+
+    NK = round(Int,length(ben)/4)
+    sz = Diagonal([ones(NK);fill(-1.0,NK);ones(NK);fill(-1.0,NK)])
+    mz = dot(v0,sz,bev[:,2])
     for iw in 1:Nw
-        ww=w[iw]+1im*η
-        abs(ww)<1e-6 && (ww=(w[iw+1]-w[iw])/2)
+        abs(w[iw])>5e-5 ? ww=w[iw]+1im*η : ww=5e-5+1im*η
         tmp=0.0im
         @views for nn in 2:Nm
-            tmp+=dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
-            tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)/(ww+ben[nn]-E0)
+            tmp+=mz*dot(bev[:,2],Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
+            tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,bev[:,2])*conj(mz)/(ww+ben[nn]-E0)
         end
-        Xw[iw]=tmp/ww
+        Xw[iw]=tmp*1im/ww
     end
     return Xw
+end
+
+function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
+    Nm=round(Int,length(ben)/2)
+    v0=[ϕG; conj.(ϕG)]
+
+    if abs(ben[2]-ben[1])<1e-6
+        v1=[ϕG2; zeros(ComplexF64, Nm)]
+    else
+        v1=bev[:,2]
+    end
+    E0=ben[1]
+
+    NK = round(Int,length(ben)/4)
+    sz = Diagonal([ones(NK);fill(-1.0,NK);ones(NK);fill(-1.0,NK)])
+    mz = dot(v0,sz,v1)
+    println(mz)
+
+    tmp=0.0im
+    @views for nn in 2:Nm
+        nn==2 ? w=1e-6 : w=0.0
+        tmp+=-2*imag(mz*dot(v1,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0))/(w+E0-ben[nn])^2
+        # tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v1)*conj(mz)/(w+ben[nn]-E0)^2
+    end
+
+    return tmp
 end

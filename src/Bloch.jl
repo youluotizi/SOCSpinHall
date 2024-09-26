@@ -366,7 +366,7 @@ function eigen2D(lat::Lattice,bz::Array{Float64,3},nb::AbstractVector{Int})
         tmp*=dot(ev[:,ib,ix+1,iy],ev[:,ib,ix+1,iy+1])
         tmp*=dot(ev[:,ib,ix+1,iy+1],ev[:,ib,ix,iy+1])
         tmp*=dot(ev[:,ib,ix,iy+1],ev[:,ib,ix,iy])
-        bcav[ib,ix,iy]=angle(tmp)/ds
+        bcav[ib,ix,iy]=-angle(tmp)/ds
     end
     return (;en,ev,bcav)
 end
@@ -393,7 +393,7 @@ function cal_Bcav(lat::Lattice,kk::AbstractVector{Float64},nb::AbstractVector{In
             abs(dE)<1e-6 && continue
             tmp+=imag(dot(ev[:,ib],Dhx,ev[:,ii])*dot(ev[:,ii],Dhy,ev[:,ib]))/dE^2
         end
-        bcav[ib]=2*tmp
+        bcav[ib]=-2*tmp
     end
 
     return bcav

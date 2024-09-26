@@ -1,1 +1,1 @@
-# plane wave expandsion
+soc superfluid in optical lattice
