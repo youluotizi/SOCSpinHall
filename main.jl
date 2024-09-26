@@ -104,7 +104,6 @@ fig
 
 
 
-
 ## Hall conductivity
 # spectrum decomposition
 
