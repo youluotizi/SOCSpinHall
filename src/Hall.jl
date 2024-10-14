@@ -43,7 +43,7 @@ function Green1(
 
     Gw=-1.0.*Mk0
     for iw in 1:Nw
-        abs(w[iw])>1e-4 ? ww=w[iw]+1im*η : ww=1e-4+1im*η
+        ww = abs(w[iw])>1e-4 ? w[iw]+1im*η : 1e-4+1im*η
         for iQ in 1:Nm
             Gw[iQ,iQ]=ww-Mk0[iQ,iQ]
             Gw[iQ+Nm,iQ+Nm]=-ww-Mk0[iQ+Nm,iQ+Nm]
@@ -104,7 +104,7 @@ function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     for iw in 1:Nw
         ww = abs(w[iw])>5e-6 ? w[iw]+1im*η : 5e-6+1im*η
         tmp=0.0im
-        @views for nn in 3:20
+        @views for nn in 2:Nm
             tmp+=dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
             tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)/(ww+ben[nn]-E0)
             # if nn <13
@@ -112,7 +112,7 @@ function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
             #     println(", ",expshow(dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)))
             # end
         end
-        Xw[iw]=tmp*1im/(ww-1im*η)
+        Xw[iw]=tmp*1im/ww
     end
     return Xw
 end
@@ -129,7 +129,7 @@ function Xspec2(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     sz = Diagonal([ones(NK);fill(-1.0,NK);ones(NK);fill(-1.0,NK)])
     mz = dot(v0,sz,bev[:,2])
     for iw in 1:Nw
-        abs(w[iw])>5e-5 ? ww=w[iw]+1im*η : ww=5e-5+1im*η
+        ww = abs(w[iw])>5e-5 ? w[iw]+1im*η : 5e-5+1im*η
         tmp=0.0im
         @views for nn in 2:Nm
             tmp+=mz*dot(bev[:,2],Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
@@ -143,11 +143,11 @@ end
 function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
     Nm=round(Int,length(ben)/2)
     v0=[ϕG; conj.(ϕG)]
-
+    v1=similar(v0)
     if abs(ben[2]-ben[1])<1e-6
-        v1=[ϕG2; zeros(ComplexF64, Nm)]
+        v1.=[ϕG2; zeros(ComplexF64, Nm)]
     else
-        v1=bev[:,2]
+        v1.=bev[:,2]
     end
     E0=ben[1]
 
@@ -158,7 +158,7 @@ function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
 
     tmp=0.0im
     @views for nn in 2:Nm
-        nn==2 ? w=1e-6 : w=0.0
+        w = nn==2 ? 1e-6 : 0.0
         tmp+=-2*imag(mz*dot(v1,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0))/(w+E0-ben[nn])^2
         # tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v1)*conj(mz)/(w+ben[nn]-E0)^2
     end

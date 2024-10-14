@@ -27,7 +27,7 @@ fig= series(kl.r,en.-en[1]; axis=(;xticks=xt,yticks=0:2:12),color=repeat(Makie.w
 
 ## --- some 2D plot ---
 M = -0.5.*(lat.b[:,1].+lat.b[:,2])
-bz = mymesh([M, M.+lat.b[:,1], M.+lat.b[:,2]].*0.5, [24,24])
+bz = mymesh([M, lat.b[:,1], lat.b[:,2]].*0.5, [24,24])
 x = eigen2D(lat,bz,1:12)
 
 fig,ax,hm = heatmap(x.bcav[1,:,:])
@@ -41,13 +41,13 @@ x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
 # ---------------------------------------------------
 lat = set_lattice(8.0,1.5,1.0)
 Γ = [0.0,0.0]
-Nopt = 12
+Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
 gs=[1,cispi(-0.25), zeros(Nopt-2)...]
 
 ϕG,u0,xopt=main_opt(E0, ϕ0, lat; gs=gs, Nstep=10^5)
 mat = calmat(lat, Γ)
-@time ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=10^4) # 10.6/11 threads; 10.3/5 threads
+@time ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=10^4)
 SpinHall.gaugephi0!(ϕG, ϕ0)
 ϕ0'*ϕG|>expshow
 
@@ -66,9 +66,6 @@ arrows(x, x, sp[1], sp[2], arrowsize = 8, lengthscale = 1,
 # ---------------------------------------------------
 ##               BdG spectrum
 # ---------------------------------------------------
-kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
-xt = (kl.r[kl.pt],["Γ","X","M","Γ"])
-
 @time ben = main_BdG(lat,ϕG,u0,kl.k,20); ## 55.078
 fig=series(kl.r, ben[1:12,:];
     color=repeat(Makie.wong_colors(),3),
@@ -78,12 +75,12 @@ fig=series(kl.r, ben[1:12,:];
 )
 
 ## --- spectrum near Γ point ---
-kl2 = BzLine([Γ, kl.k[:,3]],50)
+kl2 = BzLine([Γ, 0.013.*lat.b[:,1]],50)
 @time ben2 = main_BdG(lat,ϕG,u0,kl2.k,2); ## 55.078
 fig=series(kl2.r, ben2;
     marker=:circle,
     color=Makie.wong_colors(),
-    figure=(;size=(400,400*0.63)),
+    figure=(;size=(1,0.63).*400),
     linewidth=1.5,
 )
 
@@ -102,58 +99,69 @@ fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0
 
 ## --- 谱分解计算 Spin Hall ---
 ben,bev=eigBdG(Mk0)
-Xw2 = Xspec1(w[1:2],Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
+Xw2 = Xspec1(w,Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
 series!(w,hcat(reim(Xw2)...)',solid_color=:red,linestyle=:dash)
 fig
 
 
 ## --- symmetry of BdG state ---
-ϕG.*=cispi(0.125)
-myint(ϕG,ϕG,lat.Kvec,"T")|>expshow
-Nm = round(Int,length(ben)/2)
-phs = 1/myint(ϕG,ϕG,lat.Kvec,"T")
+myint(ϕG,ϕG,lat.Kvec,"T")|>expshow  # T symmetry
 
+Nm = round(Int,length(ben)/2)
+phs = 1/myint(ϕG,ϕG,lat.Kvec,"S1")   # \tilde D1 symmetry
 for ii in 0:11
     v1 = SpinHall.normalize(bev[1:Nm,ii+1])
-    a = myint(v1,v1,lat.Kvec,"T")#*phs
+    a = myint(v1,v1,lat.Kvec,"S1")*phs
     if abs(a-1)<1e-5
-        println(ii,", ", expshow(a), ", B1")
+        println(ii,", B1, ", expshow(a))
     else
-        println(ii,", ", expshow(a),", B2")
+        println(ii,", B2, ", expshow(a))
     end
 end
 
-## -------  another ground state -----
+phs = 1/myint(ϕG,ϕG,lat.Kvec,"TxC2")   # Λₓr₂ symmetry
+for ii in 0:11
+    v1 = SpinHall.normalize(bev[1:Nm,ii+1])
+    a = myint(v1,v1,lat.Kvec,"TxC2")*phs
+    if abs(a-1)<1e-5
+        println(ii,", ", real(a))
+    else
+        println(ii,", ", real(a))
+    end
+end
+
+## ----  another ground state ----
 PTϕG = PTtransform(ϕG)
 Vg=[ϕG PTϕG]
 SpinHall.zeeman_split!(Vg)
 (ci = Vg'*ϕG)|>expshow|>println
 abs.(ci[1].*Vg[:,1].+ci[2].*Vg[:,2].-ϕG)|>findmax|>println
-SpinHall.dot(ci[1].*Vg[:,1].-ci[2].*Vg[:,2],ϕG)|>expshow
 
 ϕG1=Vg[:,1].*ci[1]
 ϕG2=Vg[:,2].*ci[2]
-##
 
+## --- hall separation ----
 Jx1,Dhx1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=1,sp=-1)
 Jy1,Dhy1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=2)
 Jx2,Dhx2 = cal_Ju(ϕG2,Γ,lat.Kvec; u=1,sp=-1)
 Jy2,Dhy2 = cal_Ju(ϕG2,Γ,lat.Kvec; u=2)
 
-w = range(0,6,128)
 Xw11 = Green1(Mk0,w,Jx1,Jy1)./lat.Sunit
 Xw22 = Green1(Mk0,w,Jx2,Jy2)./lat.Sunit
 Xw12 = Green1(Mk0,w,Jx1,Jy2)./lat.Sunit
 Xw21 = Green1(Mk0,w,Jx2,Jy1)./lat.Sunit
 ##
 
-fig=series(w,hcat(reim(Xw11.+Xw22)...)',marker=:circle,solid_color=:black)
-series!(w,hcat(reim(Xw12.+Xw21)...)',linestyle=:dash,solid_color=:red)
-series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,solid_color=:blue)
-fig
+fig=series(w,hcat(reim(Xw11.+Xw22)...)',marker=:circle,solid_color=:black,axis=(;limits=(nothing,(-0.1,0.1))), labels=["re 11+22","im 11+22"])
+series!(w,hcat(reim(Xw12.+Xw21)...)',linestyle=:dash,solid_color=:red,labels=["re 12+21","im 12+21"])
+series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,solid_color=:blue,labels=["re 11+12+..","im 11+12+.."])
+axislegend(position=:ct)
+fig|>display
 
-fig = series(w,[imag.(Xw2) real.(Xw2)]',marker=:circle,solid_color=:blue)
-series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,solid_color=:red)
+##
+fig = series(w,[imag.(Xw2) real.(Xw2)]',marker=:circle,solid_color=:blue,labels=["re σs","im σs"],axis=(;limits=(nothing,(-0.1,0.1))))
+series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,labels=["re 11+12+..","im 11+12+.."],solid_color=:red)
+axislegend(position=:ct)
 fig
 
 
@@ -183,7 +191,7 @@ function spinhall_M0(g0::Float64)
                 Nopt=8; Nstep1=10^5; Nstep2=5000
             end
             gs=[1.0,cispi(0.25), zeros(Nopt-2)...]
-            ϕG,u0,xopt=main_opt(E0, ϕ0, lat;gs=gs, Nstep=Nstep1)
+            ϕG,u0,xopt=main_opt(E0[1:Nopt], ϕ0[:,1:Nopt], lat;gs=gs, Nstep=Nstep1)
             mat= calmat(lat,Γ)
 
             ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=Nstep2)
@@ -193,7 +201,7 @@ function spinhall_M0(g0::Float64)
                 ϕG = (ϕ0[:,1].+cispi(0.25).*ϕ0[:,2])./√2
                 u0 = E0[1]
             else
-                ϕG = SpinHall.normalize(ϕ0[:,1].+0.5.*ϕ0[:,1])
+                ϕG = ϕ0[:,1] # SpinHall.normalize(ϕ0[:,1].+0.5.*ϕ0[:,2])
                 u0 = E0[1]
             end
         end
@@ -236,9 +244,10 @@ function spinhall_M0(g0::Float64)
     return (;m0,Xw,Mspin)
 end
 
-g0=spinhall_M0(0.0)
-g1=spinhall_M0(1.0)
+@time g0=spinhall_M0(0.0); # g=(0.35,0.3)*0, nointeracting limits
+@time g1=spinhall_M0(1.0); # g=(0.35,0.3)*1, cost several minites
 
+##
 #=
 save("data/SpinHall_int.h5", OrderedDict(
     "g0/m0"=>g0.m0, "g0/Xw"=>real.(g0.Xw), "g0/Mspin"=>g0.Mspin,
@@ -251,17 +260,16 @@ save("data/SpinHall_int.h5", OrderedDict(
 =#
 
 begin
-    fig,_,_ = scatterlines(m,abs.(Mspin[3,:]))
-    scatterlines!(m,sqrt.(Mspin[1,:].^2 .+Mspin[2,:].^2))
+    g=g1
+    fig,_,_ = scatterlines(g.m0,abs.(g.Mspin[3,:]))
+    scatterlines!(g.m0,sqrt.(g.Mspin[1,:].^2 .+g.Mspin[2,:].^2))
     fig
 end
 
-scatterlines(m,real.(Xw[3,:].+Xw[4,:]))
-
 begin
-    g=g2
+    g=g0
     fig = Figure(size=(800,600))
-    ax = Axis(fig[1,1],limits=(nothing,(-0.01,0.105)),title=L"V_0=8",xlabel=L"M_0")
+    ax = Axis(fig[1,1],limits=(nothing,(-0.01,maximum(real.(g.Xw))+0.005)),title=L"V_0=8",xlabel=L"M_0")
     scatterlines!(fig[1,1],g.m0,real.(g.Xw[5,:]),color=:black,label=L"\sigma_{xy}^s",linewidth=3)
     scatterlines!(g.m0,-1.0.*real.(g.Xw[6,:]),marker=:circle,color=Makie.wong_colors()[1],
         label=L"\langle\sigma_z\rangle_1B_1+\langle\sigma_z\rangle_2B_2")
@@ -281,27 +289,44 @@ end
 # ---------------------------------------------------
 ##     Hall conductivity as function of V_0
 # ---------------------------------------------------
-function spinhall_V0(g0::Float64)
+function spinhall_V0(m0::Float64,g0::Float64)
     t=time()
-    Nopt = 8
-    V0list=range(0.6,8.0,38)
-    Nv0=length(V0list)
-    Xw=Array{ComplexF64}(undef,9,Nv0)
-    Γ=[0.0,0.0]
+    V0=range(0.6,8.0,38)
+    Nv0 = length(V0)
+    Xw = Array{ComplexF64}(undef,7,Nv0)
+    Mspin = Array{Float64}(undef,3,Nv0)
+    Γ = [0.0,0.0]
  
-    for ii in eachindex(V0list)
-        lat = set_lattice(V0list[ii],1.5,g0)
-        E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
-        #=
-        gs=[1.0,cispi(0.25), zeros(Nopt-2)...]
-        ϕG,u0,xopt=main_opt(E0, ϕ0, lat;gs=gs, Nstep=120000)
-        mat= calmat(lat,Γ)
-        ϕG,u0=imag_time_evl(mat, ϕG, lat)
-        SpinHall.gaugephi0!(ϕG, ϕ0)
-        =#
-        ϕG = (ϕ0[:,1].+cispi(0.25).*ϕ0[:,2])./√2
-        u0 = E0[1]
+    for ii in eachindex(V0)
+        println("--------------------------------------------------")
+        println("V0 = ",V0[ii])
+
+        lat = set_lattice(V0[ii],m0,g0)
+        E0,ϕ0=eigenband(lat, Γ, 1:20)
         
+        if abs(g0)>1e-5
+            if 1.679<m0<1.93
+                Nopt=16; Nstep1=3*10^5; Nstep2=10^4
+            else
+                Nopt=8; Nstep1=10^5; Nstep2=5000
+            end
+            gs=[1.0,cispi(0.25), zeros(Nopt-2)...]
+            ϕG,u0,xopt=main_opt(E0[1:Nopt], ϕ0[:,1:Nopt], lat;gs=gs, Nstep=Nstep1)
+            mat= calmat(lat,Γ)
+
+            ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=Nstep2)
+            SpinHall.gaugephi0!(ϕG, ϕ0)
+        else
+            if m0[ii]<1.87
+                ϕG = (ϕ0[:,1].+cispi(0.25).*ϕ0[:,2])./√2
+                u0 = E0[1]
+            else
+                ϕG = ϕ0[:,1] # SpinHall.normalize(ϕ0[:,1].+0.5.*ϕ0[:,2])
+                u0 = E0[1]
+            end
+        end
+        
+        Mspin[:,ii].= real.(dot_spin(ϕG))
         PTϕG = PTtransform(ϕG)
         Vg=[ϕG PTϕG]
         SpinHall.zeeman_split!(Vg)
@@ -335,20 +360,20 @@ function spinhall_V0(g0::Float64)
         Xw[7,ii] = Xspec2(Dhx,Dhy,ben,bev,ϕG,PTϕG)/lat.Sunit
     end
 
-    println("time_used: ",time()-t)
-    return (;V0list,Xw)
+    println("time_used: ",time()-t,"\n\n")
+    return (;V0,Xw,Mspin)
 end
 
-V0,Xw2 = spinhall_V0(0.0)
+gv = spinhall_V0(1.5,1.0)
 
 begin
     fig = Figure(size=(500,400))
-    ax = Axis(fig[1,1],limits=(nothing,(-0.01,0.12)),title=L"M_0=1.5",xlabel=L"V_0")
-    scatterlines!(V0,real.(Xw2[5,:]),color=:black,label=L"\sigma_{xy}^s",linewidth=3)
-    scatterlines!(V0,-1.0.*real.(Xw2[6,:]),marker=:circle,color=Makie.wong_colors()[1],
+    ax = Axis(fig[1,1],limits=(nothing,extrema(real.(gv.Xw)).+(0.005,0.005)),title=L"M_0=1.5",xlabel=L"V_0")
+    scatterlines!(gv.V0,real.(gv.Xw[5,:]),color=:black,label=L"\sigma_{xy}^s",linewidth=3)
+    scatterlines!(gv.V0,-1.0.*real.(gv.Xw[6,:]),marker=:circle,color=Makie.wong_colors()[1],
         label=L"\langle\sigma_z\rangle_1B_1+\langle\sigma_z\rangle_2B_2"
     )
-    series!(V0,real.([Xw2[7,:] Xw2[1,:].+Xw2[2,:] Xw2[3,:].+Xw2[4,:]])',
+    series!(gv.V0,real.([gv.Xw[7,:] gv.Xw[1,:].+gv.Xw[2,:] gv.Xw[3,:].+gv.Xw[4,:]])',
         color=Makie.wong_colors()[2:end],linestyle=:dash, marker=:ltriangle,
         labels=[L"\langle g|\sigma_z|g'\rangle\langle g'|j_x,j_y]|g\rangle",
             L"\langle\phi_1\cdots\phi_1\rangle+\langle\phi_2\cdots\phi_2\rangle",
