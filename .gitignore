@@ -1,5 +1,0 @@
-.DS_Store
-data/
-Manifest.toml
-.gitignore
-/main.jl
