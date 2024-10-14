@@ -1,4 +1,4 @@
-export Lattice,calmat,eigband,eigenband,eigen2D,cal_Bcav,cal_bloch_wave
+export Lattice,calmat,eigband,eigenband,eigen2D,cal_Bcav,cal_bloch_wave,cal_bloch_spin
 export dot_sx,dot_sy,dot_sz,dot_spin
 export zeeman_split!
 
@@ -170,6 +170,26 @@ function cal_bloch_wave(
     dropdims(w, dims=3)
 end
 
+function cal_bloch_spin(
+    kk::Vector{Float64},
+    uk::Array{<:Number,1},
+    lat::Lattice,
+    xx::AbstractVector{Float64},
+    yy::AbstractVector{Float64}
+)
+    wup = cal_bloch_wave(kk, uk[1:lat.NK], lat, xx, yy)
+    wdn = cal_bloch_wave(kk, uk[lat.NK+1:end], lat, xx, yy)
+    sx = Array{Float64}(undef,length(xx),length(yy))
+    sy = similar(sx)
+    sz = similar(sx)
+    Threads.@threads for ii in eachindex(wup)
+        sx[ii] = 2*real(conj(wup[ii])*wdn[ii])
+        sy[ii] = 2*imag(conj(wup[ii])*wdn[ii])
+        sz[ii] = abs2(wup[ii])-abs2(wdn[ii])
+    end
+    return sx,sy,sz
+end
+
 # 哈密顿矩阵非对角元
 # b1 = [1,1], b2=[-1,1]
 # V_{11} = V[cos^2(x)+cos^2(y)]
@@ -310,7 +330,7 @@ function eigenband(lat::Lattice,kk::Array{Float64,2},nb::AbstractVector{Int})
     en=Array{Float64,2}(undef,Nb,Nk)
     ev=Array{ComplexF64,3}(undef,2*lat.NK,Nb,Nk)
 
-    mz = abs(lat.mz)<1e-10
+    mz = abs(lat.mz)<1e-9
     @inbounds for ik in 1:Nk
         @views matdiag!(mat,kk[:,ik],lat.Kvec, lat.v0, lat.mz)
         en_tmp,ev_tmp=eigen(Hermitian(mat))
@@ -330,7 +350,6 @@ function eigenband(lat::Lattice,kk::Array{Float64,1},nb::AbstractVector{Int})
     k2 = reshape(kk,:,1)
     en,ev=eigenband(lat,k2,nb)
     ev2 = dropdims(ev,dims=3)
-    abs(lat.mz)<1e-10 && zeeman_split!(ev2)
     gaugev!(ev2)
     dropdims(en,dims=2),ev2
 end

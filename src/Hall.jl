@@ -102,13 +102,17 @@ function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     v0=[ϕG; -1.0.*conj.(ϕG)]
     E0=ben[1]
     for iw in 1:Nw
-        abs(w[iw])>5e-6 ? ww=w[iw]+1im*η : ww=5e-6+1im*η
+        ww = abs(w[iw])>5e-6 ? w[iw]+1im*η : 5e-6+1im*η
         tmp=0.0im
-        @views for nn in 2:Nm
+        @views for nn in 3:20
             tmp+=dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
             tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)/(ww+ben[nn]-E0)
+            # if nn <13
+            #     print(nn,", ",expshow(dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)))
+            #     println(", ",expshow(dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)))
+            # end
         end
-        Xw[iw]=tmp*1im/ww
+        Xw[iw]=tmp*1im/(ww-1im*η)
     end
     return Xw
 end

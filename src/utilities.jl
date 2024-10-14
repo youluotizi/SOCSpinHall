@@ -89,13 +89,25 @@ BzLine(Klist::Vector{Vector{Float64}})=BzLine(Klist,length(Klist))
     mymesh([O, A, B], [n1,n2])
 对矢量OA，OB围成的平行四边形区域进行网格化分，两个方向点的数目为n1，n2
 """
-function mymesh(Klist::Vector{Vector{Float64}},nn::Array{Int,1})
+function mymesh(plist::Vector{<:AbstractVector{Float64}},nn::Vector{Int})
+    p=plist[1]
+    b1=plist[2]./(nn[1]-1)
+    b2=plist[3]./(nn[2]-1)
+    bz=Array{Float64,3}(undef,2,nn[1],nn[2])
+    for jj in 1:nn[2],ii in 1:nn[1]
+        bz[:,ii,jj].= p.+(jj-1).*b2.+(ii-1).*b1
+    end
+    return bz
+end
+
+# 适合N维情况
+function mymesh2(Klist::Vector{<:AbstractVector{Float64}},nn::Array{Int,1})
     ndim=length(nn)
     p0=Klist[1]
 
     a=Array{Float64}(undef,ndim,ndim)
     for ii in 1:ndim
-        a[:,ii].=(Klist[ii+1].-p0)./(nn[ii]-1)
+        a[:,ii].=Klist[ii+1]./(nn[ii]-1)
     end
 
     mgrid=zeros(Float64,ndim,nn...)
@@ -105,12 +117,13 @@ function mymesh(Klist::Vector{Vector{Float64}},nn::Array{Int,1})
     for idx in Iterators.product(xrn...)
         Vtmp.=p0
         for ii in 1:ndim
-            Vtmp.+=(idx[ii]-1).*a[:,ii]
+            Vtmp.+=(idx[ii]-1).*view(a,:,ii)
         end
         mgrid[:,idx...].=Vtmp
     end
     mgrid
 end
+
 
 """
     norBev!(bv::Matrix; V0_len=1.0)

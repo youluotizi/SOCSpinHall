@@ -8,7 +8,7 @@ function phi4_integrate!(
 )
     Nb=size(uk,2)
     M = -0.5.*(lat.a[:,1].+lat.a[:,2])
-    bz=mymesh([M,M.+lat.a[:,1],M.+lat.a[:,2]],[160,160]) # 元胞进行网格化分
+    bz=mymesh([M,lat.a[:,1],lat.a[:,2]],[160,160]) # 元胞进行网格化分
     _,Nx,Ny=size(bz)
 
     xx=range(0.0,norm(lat.a[:,1]),Nx)   # 数值积分变量 x,y

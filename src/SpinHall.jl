@@ -1,7 +1,7 @@
 module SpinHall
 
 using LinearAlgebra #,MKL
-BLAS.set_num_threads(Threads.nthreads())
+# BLAS.set_num_threads(Threads.nthreads())
 
 include("utilities.jl")
 include("Bloch.jl")

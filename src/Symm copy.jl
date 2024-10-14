@@ -35,7 +35,7 @@ function (S::Syms)(V::Array{Float64,2})
     Sn=SA[k1^2*(1-w1)+w1 k1*k2*(1-w1);k1*k2*(1-w1) k2^2*(1-w1)+w1]
 
     Vq=similar(V)
-    @inbounds for iQ in axes(V,2)
+    for iQ in axes(V,2)
         Vq[1,iQ]=Sn[1,1]*V[1,iQ]+Sn[1,2]*V[2,iQ]
         Vq[2,iQ]=Sn[2,1]*V[1,iQ]+Sn[2,2]*V[2,iQ]
     end
@@ -46,7 +46,7 @@ end
 
 function symPT(V::Array{Float64,2})
     Vq=similar(V)
-    @inbounds for iQ in axes(V,2)
+    for iQ in axes(V,2)
         Vq[1,iQ]=-V[1,iQ]
         Vq[2,iQ]=-V[2,iQ]
     end
@@ -74,24 +74,12 @@ function T_dx!(xx::Array{Float64,3},n::Int)
     end
 end
 
-function TxC2(V::Array{Float64,2})
-    D = SA[cospi(0.5*2) -sinpi(0.5*2);sinpi(0.5*2) cospi(0.5*2)]
-    Vq = similar(V)
-    @inbounds for iQ in axes(V,2)
-        Vq[1,iQ]=D[1,1]*V[1,iQ]+D[1,2]*V[2,iQ]
-        Vq[2,iQ]=D[2,1]*V[1,iQ]+D[2,2]*V[2,iQ]
-    end
-    sz=SA[-1.0im 0im;0 1.0im]*SA[cispi(-2/4) 0.0im;0.0im cispi(2/4)]
-
-    return Vq,sz
-end
-
 const Tlist=Dict(
     "C1"=>Symc(1), "C2"=>Symc(2), "C3"=>Symc(3), "C4"=>Symc(4),
     "C5"=>Symc(5), "C6"=>Symc(6), "C7"=>Symc(7), "C8"=>Symc(0),
     "S1"=>Syms(1), "S2"=>Syms(2), "S3"=>Syms(3), "S4"=>Syms(4),
     "S5"=>Syms(5), "S6"=>Syms(6), "S7"=>Syms(7), "S8"=>Syms(8),
-    "Tx"=>symTx,   "Ty"=>symTx,   "PT"=>symPT,   "T" =>symT, "TxC2"=>TxC2
+    "Tx"=>symTx,   "Ty"=>symTx,   "PT"=>symPT,   "T" =>symT
 )
 
 function _Psix(
@@ -120,15 +108,14 @@ function _Psix(
 end
 
 function Psix(v::Vector{ComplexF64},Kvec0::Array{Float64,2},idx::String)
-    p0 = SA[0.5pi,0.0]#-0.5.*(a1.+a2)
     a1 = SA[1pi,1pi]
     a2 = SA[-1pi,1pi]
-    xx = mymesh([p0, a1, a2],[256,256])
+    p0 = SA[0.5pi,0.0]#-0.5.*(a1.+a2)
+    @time xx = mymesh2([p0,p0.+a1,p0.+a2],[256,256])
 
     Kvec,sz = Tlist[idx](Kvec0)
     idx=="Tx" && T_dx!(xx,1)
     idx=="Ty" && T_dx!(xx,2)
-    idx=="TxC2" && T_dx!(xx,1)
     
     if idx!="PT" && idx!="T"
         _Psix(v,Kvec,sz,xx)

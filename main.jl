@@ -1,15 +1,9 @@
-# 首次运行时须按[option]+[enter]执行以下3行，清除包的具体版本依赖，以后就不用了，在其他文件也不需要
-rm("Manifest.toml")
-using Pkg
-Pkg.instantiate()
-##
-using OrderedCollections,FileIO
 using Revise
 using SpinHall
+using OrderedCollections,FileIO
 
 using CairoMakie
 set_theme!(;size=(500,400))
-
 const cm = 72/2.54
 
 function set_lattice(v0, m0, gg)
@@ -17,67 +11,129 @@ function set_lattice(v0, m0, gg)
     g = [0.35,0.3].*gg
     Kmax = 7
     b = [[1.0,1.0] [-1.0,1.0]]
-
     Lattice(b,v0,m0,mz,g[1],g[2],Kmax)
 end
 
-##
-set_theme!(;
-    Figure=(;size=(500,400)),
-    Axis=(;limits=(nothing,(-0.1,0.1)))
-)
-## ---------------------------------------------------
+# -------------------------------------------------------------
+##                   single particle states
+# -------------------------------------------------------------
+lat = set_lattice(8.0,1.5,1.0)
+Γ = [0.0,0.0]
+kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
+en = eigband(lat,kl.k, 1:20)
+xt = (kl.r[kl.pt],["Γ","X","M","Γ"])
+fig= series(kl.r,en.-en[1]; axis=(;xticks=xt,yticks=0:2:12),color=repeat(Makie.wong_colors(),4))
 
 
+## --- some 2D plot ---
+M = -0.5.*(lat.b[:,1].+lat.b[:,2])
+bz = mymesh([M, M.+lat.b[:,1], M.+lat.b[:,2]].*0.5, [24,24])
+x = eigen2D(lat,bz,1:12)
+
+fig,ax,hm = heatmap(x.bcav[1,:,:])
+Colorbar(fig[1,2],hm)
+fig|>display
+x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
+
+
+# ---------------------------------------------------
+##          Ground state
+# ---------------------------------------------------
 lat = set_lattice(8.0,1.5,1.0)
 Γ = [0.0,0.0]
 Nopt = 12
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
-gs=[1,cispi(0.25), zeros(Nopt-2)...]
+gs=[1,cispi(-0.25), zeros(Nopt-2)...]
 
 ϕG,u0,xopt=main_opt(E0, ϕ0, lat; gs=gs, Nstep=10^5)
 mat = calmat(lat, Γ)
-ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=10^4)
+@time ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=10^4) # 10.6/11 threads; 10.3/5 threads
 SpinHall.gaugephi0!(ϕG, ϕ0)
 ϕ0'*ϕG|>expshow
 
-# ϕG = (ϕ0[:,1].+cispi(0.25).*ϕ0[:,2])./√2
-##
+# ϕG = (ϕ0[:,1].+cispi(0.25).*ϕ0[:,2])./√2  # nointeracting ground state
 
+
+## ----  plot ground state ----
+x = range(-pi,pi,20)
+sp = cal_bloch_spin(Γ, ϕG, lat, x, x)
+nsp= vec(sqrt.(sp[1].^2+sp[2].^2))
+arrows(x, x, sp[1], sp[2], arrowsize = 8, lengthscale = 1,
+    arrowcolor = nsp, linecolor = nsp, axis=(;aspect=1)
+)
+
+
+# ---------------------------------------------------
+##               BdG spectrum
+# ---------------------------------------------------
+kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
+xt = (kl.r[kl.pt],["Γ","X","M","Γ"])
+
+@time ben = main_BdG(lat,ϕG,u0,kl.k,20); ## 55.078
+fig=series(kl.r, ben[1:12,:];
+    color=repeat(Makie.wong_colors(),3),
+    figure=(;size=(400,400*0.63)),
+    linewidth=1.5,
+    axis=(;xticks=xt,yticks=range(0,10,6),ygridvisible=false)
+)
+
+## --- spectrum near Γ point ---
+kl2 = BzLine([Γ, kl.k[:,3]],50)
+@time ben2 = main_BdG(lat,ϕG,u0,kl2.k,2); ## 55.078
+fig=series(kl2.r, ben2;
+    marker=:circle,
+    color=Makie.wong_colors(),
+    figure=(;size=(400,400*0.63)),
+    linewidth=1.5,
+)
+
+
+# ---------------------------------------------------
+##              Spin Hall
+# ---------------------------------------------------
+Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
+Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
+Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=1)
+
+w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
+Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
+fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
+
+
+## --- 谱分解计算 Spin Hall ---
+ben,bev=eigBdG(Mk0)
+Xw2 = Xspec1(w[1:2],Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
+series!(w,hcat(reim(Xw2)...)',solid_color=:red,linestyle=:dash)
+fig
+
+
+## --- symmetry of BdG state ---
+ϕG.*=cispi(0.125)
+myint(ϕG,ϕG,lat.Kvec,"T")|>expshow
+Nm = round(Int,length(ben)/2)
+phs = 1/myint(ϕG,ϕG,lat.Kvec,"T")
+
+for ii in 0:11
+    v1 = SpinHall.normalize(bev[1:Nm,ii+1])
+    a = myint(v1,v1,lat.Kvec,"T")#*phs
+    if abs(a-1)<1e-5
+        println(ii,", ", expshow(a), ", B1")
+    else
+        println(ii,", ", expshow(a),", B2")
+    end
+end
+
+## -------  another ground state -----
 PTϕG = PTtransform(ϕG)
 Vg=[ϕG PTϕG]
 SpinHall.zeeman_split!(Vg)
 (ci = Vg'*ϕG)|>expshow|>println
 abs.(ci[1].*Vg[:,1].+ci[2].*Vg[:,2].-ϕG)|>findmax|>println
-SpinHall.dot(ci[1].*Vg[:,1].-ci[2].*Vg[:,2],ϕG)
+SpinHall.dot(ci[1].*Vg[:,1].-ci[2].*Vg[:,2],ϕG)|>expshow
 
-
-Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
-Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2)
-
-w = [range(0,1.5,100);
-    range(1.6,4.4,18)#;
-    range(4.45,6.0,120)
-] #range(0,6,128)
-Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
-fig = series(w,hcat(reim(Xw1)...)',marker=:circle,solid_color=:blue)
-
-# ben,bev=eigBdG(Mk0)
-# Xw2 = Xspec1(w,Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
-# series!(w,hcat(reim(Xw2)...)',solid_color=:blue,linestyle=:dash)
-
-# Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1)
-# Xw3 = Xspec2(w,tz*Dhx,tz*Dhy,ben,bev,ϕG)./lat.Sunit
-# series!(w,hcat(reim(Xw3)...)',solid_color=:gray,linestyle=:dot)
-# fig
-
+ϕG1=Vg[:,1].*ci[1]
+ϕG2=Vg[:,2].*ci[2]
 ##
-ϕ2=ci[1].*Vg[:,1].-ci[2].*Vg[:,2]
-SpinHall.dot(bev[1:226,2]./sqrt(5.240386180751463),PTϕG)
-SpinHall.dot(conj.(bev[227:end,2])./sqrt(4.240386180751464),PTϕG)
-##
-
 
 Jx1,Dhx1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=1,sp=-1)
 Jy1,Dhy1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=2)
@@ -102,11 +158,9 @@ fig
 
 
 
-
-
-## Hall conductivity
-# spectrum decomposition
-
+# ---------------------------------------------------
+##  Hall conductivity as function of M_0
+# ---------------------------------------------------
 function spinhall_M0(g0::Float64)
     t=time()
     m0 = [range(0.03,1.73,18); range(1.76,1.99,10); range(2.02,3.2,13)]
@@ -183,11 +237,18 @@ function spinhall_M0(g0::Float64)
 end
 
 g0=spinhall_M0(0.0)
+g1=spinhall_M0(1.0)
+
+#=
 save("data/SpinHall_int.h5", OrderedDict(
     "g0/m0"=>g0.m0, "g0/Xw"=>real.(g0.Xw), "g0/Mspin"=>g0.Mspin,
-    "g1/m0"=>g2.m0, "g1/Xw"=>real.(g2.Xw), "g1/Mspin"=>g2.Mspin,
-    "sw/ben"=>real.(ben[1:20]),"sw/w"=>w,"sw/Re"=>real.(Xw1),"sw/Im"=>imag.(Xw1)
+    "g1/m0"=>g1.m0, "g1/Xw"=>real.(g1.Xw), "g1/Mspin"=>g1.Mspin,
+    "sw/ben"=>real.(ben),"sw/w"=>w,"sw/Re"=>real.(Xw1),"sw/Im"=>imag.(Xw1),
+    "k/pt"=>kl.pt, "k/r"=>kl.r,
 ))
+# d = load("data/SpinHall_int.h5",dict=OrderedDict())
+# save("data/SpinHall_int.h5", d)
+=#
 
 begin
     fig,_,_ = scatterlines(m,abs.(Mspin[3,:]))
@@ -217,6 +278,9 @@ begin
 end
 
 
+# ---------------------------------------------------
+##     Hall conductivity as function of V_0
+# ---------------------------------------------------
 function spinhall_V0(g0::Float64)
     t=time()
     Nopt = 8

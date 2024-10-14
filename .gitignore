@@ -1,5 +1,5 @@
 .DS_Store
 data/
-/Manifest.toml
+Manifest.toml
 .gitignore
 /main.jl
