@@ -40,7 +40,7 @@ x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
 # ---------------------------------------------------
 ##          Ground state
 # ---------------------------------------------------
-lat = set_lattice(4.0,2.5,1.0)
+lat = set_lattice(8.0,1.5,1.0)
 Γ = [0.0,0.0]
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
@@ -120,8 +120,8 @@ function hall_theta(lat,ϕG,u0,Γ,N)
     θ = range(0,2pi,N)
     w = [range(0,1.5,50); range(1.6,4.4,18)]#; range(4.45,6.0,50)]
     for i in 1:N
-        Jsx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]; sp=1)
-        Jsy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        Jsx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
+        Jsy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
         Jy, Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
     
         Xw1 = Green1(Mk0,w,Jsx,Jy)./lat.Sunit
