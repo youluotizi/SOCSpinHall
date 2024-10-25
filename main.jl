@@ -91,7 +91,7 @@ fig=series(kl2.r, ben2;
 # --------------------------------------------------- 
 Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
 Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=1)
-Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=1)
+Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=-1)
 
 w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
 Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
