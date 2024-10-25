@@ -1,7 +1,7 @@
 #---------------------------------------------------------
 #           Hall conductivity
 #---------------------------------------------------------
-export cal_Ju,Green1,eigBdG,Xspec1,Xspec2
+export cal_Ju,cal_Jv,Green1,eigBdG,Xspec1,Xspec2
 
 function cal_Ju(
     ϕ::Vector{ComplexF64},
@@ -20,6 +20,43 @@ function cal_Ju(
         Dhu[iQ+NQ]=Dhu[iQ]*sp
 
         Dhu[iQ+Nm]=-2*(-kk[u]+Kvec[u,iQ])
+        Dhu[iQ+Nm+NQ]=Dhu[iQ+Nm]*sp
+    end
+    for iQ in 1:Nm
+        Ju[iQ]=Dhu[iQ]*ϕ[iQ]
+        Ju[iQ+Nm]=Dhu[iQ+Nm]*(-1)*conj(ϕ[iQ])
+    end
+
+    return Ju,Diagonal(Dhu)
+end
+function cal_Jv(
+    ϕ::Vector{ComplexF64},
+    kk::Vector{Float64},
+    Kvec::Array{Float64,2},
+    θ::Float64;
+    d::Float64=1e-4,
+    sp::Int=1 # sp=±1 代表粒子流和自旋流
+)
+    NQ=size(Kvec,2)
+    Nm=NQ*2
+
+    Ju=Vector{ComplexF64}(undef,Nm*2)
+    Dhu=similar(Ju)
+
+    k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
+    k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
+    # k3 = (-kk[1]+d*cos(θ),-kk[2]+d*sin(θ))
+    # k4 = (-kk[1]-d*cos(θ),-kk[2]-d*sin(θ))
+
+    for iQ in 1:NQ
+        tmp = (k1[1]+Kvec[1,iQ])^2+(k1[2]+Kvec[2,iQ])^2
+        tmp-= (k2[1]+Kvec[1,iQ])^2+(k2[2]+Kvec[2,iQ])^2
+        Dhu[iQ]= tmp/(2*d)
+        Dhu[iQ+NQ]=Dhu[iQ]*sp
+
+        tmp = (-k1[1]+Kvec[1,iQ])^2+(-k1[2]+Kvec[2,iQ])^2
+        tmp-= (-k2[1]+Kvec[1,iQ])^2+(-k2[2]+Kvec[2,iQ])^2
+        Dhu[iQ+Nm]=tmp/(2*d)
         Dhu[iQ+Nm+NQ]=Dhu[iQ+Nm]*sp
     end
     for iQ in 1:Nm

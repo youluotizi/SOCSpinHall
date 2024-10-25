@@ -3,7 +3,7 @@ using SpinHall
 using OrderedCollections,FileIO
 
 using CairoMakie
-set_theme!(;size=(500,400))
+set_theme!(;size=(600,400))
 const cm = 72/2.54
 
 function set_lattice(v0, m0, gg)
@@ -40,7 +40,7 @@ x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
 # ---------------------------------------------------
 ##          Ground state
 # ---------------------------------------------------
-lat = set_lattice(8.0,2.0,1.0)
+lat = set_lattice(4.0,2.5,1.0)
 Γ = [0.0,0.0]
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
@@ -89,13 +89,14 @@ fig=series(kl2.r, ben2;
 # --------------------------------------------------- 
 ##              Spin Hall
 # --------------------------------------------------- 
-Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=1)
-Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=-1)
+# Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
+Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
+Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=1)
 
 w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
 Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
 fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
+
 
 
 ## --- 谱分解计算 Spin Hall ---
@@ -104,6 +105,52 @@ Xw2 = Xspec1(w,Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
 series!(w,hcat(reim(Xw2)...)',solid_color=:red,linestyle=:dash)
 fig
 
+## --- 任意角度 spin hall -----
+Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
+Jx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,pi/4; sp=-1)
+Jy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,pi/4+pi/2; sp=1)
+
+w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
+Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
+fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
+
+function hall_theta(lat,ϕG,u0,Γ,N)
+    Mk0,_ = cal_BdG(lat,ϕG,u0,Γ)
+    Xw = Array{ComplexF64}(undef,2,N)
+    θ = range(0,2pi,N)
+    w = [range(0,1.5,50); range(1.6,4.4,18)]#; range(4.45,6.0,50)]
+    for i in 1:N
+        Jsx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]; sp=1)
+        Jsy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        Jy, Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+    
+        Xw1 = Green1(Mk0,w,Jsx,Jy)./lat.Sunit
+        fig = Figure(size=(400,700))
+
+        str = myfilter(θ[i]/pi)
+        series(fig[1,1],w,hcat(reim(Xw1)...)',marker=:circle,axis=(limits=(0,6,-0.1,0.1),
+                title=L"\sigma_{xy}^s,\quad \theta=%$(str)\pi")
+        )
+
+        Xw2 = Green1(Mk0,w,Jsy,Jy)./lat.Sunit
+        series(fig[2,1],w,hcat(reim(Xw2)...)',marker=:circle,axis=(limits=(0,6,-0.1,0.1),
+                title=L"\sigma_{yy}^s,\quad \theta=%$(str)\pi")
+        )
+        display(fig)
+        Xw[1,i]=Xw1[1]
+        Xw[2,i]=Xw2[1]
+    end
+    return (;θ, Xw)
+end
+Xθ = hall_theta(lat,ϕG,u0,Γ,41)
+xt = ([range(0,2pi,9);],[L"%$(i)\pi/4" for i in 0:8])
+fig,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}^s",L"\sigma_{\theta+\pi/2,\theta+\pi/2}^s"])
+axislegend()
+fig
+
+fig,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}",L"\sigma_{\theta+\pi/2,\theta+\pi/2}"])
+axislegend()
+fig
 
 ## --- symmetry of BdG state ---
 myint(ϕG,ϕG,lat.Kvec,"T")|>expshow   # T symmetry
