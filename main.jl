@@ -11,6 +11,7 @@ function set_lattice(v0, m0, gg)
     g = [0.35,0.3].*gg
     Kmax = 7
     b = [[1.0,1.0] [-1.0,1.0]]
+    # b = [[1.0,0.0] [0.0,1.0]].*sqrt(2)
     Lattice(b,v0,m0,mz,g[1],g[2],Kmax)
 end
 
@@ -39,7 +40,7 @@ x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
 # ---------------------------------------------------
 ##          Ground state
 # ---------------------------------------------------
-lat = set_lattice(8.0,1.5,1.0)
+lat = set_lattice(8.0,2.0,1.0)
 Γ = [0.0,0.0]
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
@@ -69,7 +70,7 @@ arrows(x, x, sp[1], sp[2], arrowsize = 8, lengthscale = 1,
 @time ben = main_BdG(lat,ϕG,u0,kl.k,20); ## 55.078
 fig=series(kl.r, ben[1:12,:];
     color=repeat(Makie.wong_colors(),3),
-    figure=(;size=(400,400*0.63)),
+    figure=(;size=(1,0.63).*600),
     linewidth=1.5,
     axis=(;xticks=xt,yticks=range(0,10,6),ygridvisible=false)
 )
@@ -85,12 +86,12 @@ fig=series(kl2.r, ben2;
 )
 
 
-# ---------------------------------------------------
+# --------------------------------------------------- 
 ##              Spin Hall
-# ---------------------------------------------------
+# --------------------------------------------------- 
 Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
-Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=1)
+Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=1)
+Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=1)
 
 w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
 Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
@@ -105,7 +106,7 @@ fig
 
 
 ## --- symmetry of BdG state ---
-myint(ϕG,ϕG,lat.Kvec,"T")|>expshow  # T symmetry
+myint(ϕG,ϕG,lat.Kvec,"T")|>expshow   # T symmetry
 
 Nm = round(Int,length(ben)/2)
 phs = 1/myint(ϕG,ϕG,lat.Kvec,"S1")   # \tilde D1 symmetry
