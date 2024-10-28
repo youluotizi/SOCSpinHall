@@ -1,7 +1,7 @@
 #---------------------------------------------------------
 #           Hall conductivity
 #---------------------------------------------------------
-export cal_Ju,cal_Jv,Green1,eigBdG,Xspec1,Xspec2
+export cal_Ju,cal_Jθ,Green1,eigBdG,Xspec1,Xspec2
 
 function cal_Ju(
     ϕ::Vector{ComplexF64},
@@ -29,12 +29,12 @@ function cal_Ju(
 
     return Ju,Diagonal(Dhu)
 end
-function cal_Jv(
+function cal_Jθ(
     ϕ::Vector{ComplexF64},
     kk::Vector{Float64},
     Kvec::Array{Float64,2},
     θ::Float64;
-    d::Float64=1e-4,
+    d::Float64=1e-4, #  中心差分步长
     sp::Int=1 # sp=±1 代表粒子流和自旋流
 )
     NQ=size(Kvec,2)

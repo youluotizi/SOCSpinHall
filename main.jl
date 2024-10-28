@@ -107,22 +107,23 @@ fig
 
 ## --- 任意角度 spin hall -----
 Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,pi/4; sp=-1)
-Jy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,pi/4+pi/2; sp=1)
+Jx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,pi/4; sp=-1)
+Jy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,pi/4+pi/2; sp=1)
 
 w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
 Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
 fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
 
+##
 function hall_theta(lat,ϕG,u0,Γ,N)
     Mk0,_ = cal_BdG(lat,ϕG,u0,Γ)
     Xw = Array{ComplexF64}(undef,2,N)
     θ = range(0,2pi,N)
     w = [range(0,1.5,50); range(1.6,4.4,18)]#; range(4.45,6.0,50)]
     for i in 1:N
-        Jsx,Dhx = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
-        Jsy,Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
-        Jy, Dhy = cal_Jv(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        Jsx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
+        Jsy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
+        Jy, Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
     
         Xw1 = Green1(Mk0,w,Jsx,Jy)./lat.Sunit
         fig = Figure(size=(400,700))
@@ -148,9 +149,6 @@ fig,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"
 axislegend()
 fig
 
-fig,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}",L"\sigma_{\theta+\pi/2,\theta+\pi/2}"])
-axislegend()
-fig
 
 ## --- symmetry of BdG state ---
 myint(ϕG,ϕG,lat.Kvec,"T")|>expshow   # T symmetry
