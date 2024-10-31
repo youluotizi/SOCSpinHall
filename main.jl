@@ -11,7 +11,6 @@ function set_lattice(v0, m0, gg)
     g = [0.35,0.3].*gg
     Kmax = 7
     b = [[1.0,1.0] [-1.0,1.0]]
-    # b = [[1.0,0.0] [0.0,1.0]].*sqrt(2)
     Lattice(b,v0,m0,mz,g[1],g[2],Kmax)
 end
 
@@ -89,7 +88,7 @@ fig=series(kl2.r, ben2;
 # --------------------------------------------------- 
 ##              Spin Hall
 # --------------------------------------------------- 
-# Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
+Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
 Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
 Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=1)
 
@@ -107,8 +106,8 @@ fig
 
 ## --- 任意角度 spin hall -----
 Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,pi/4; sp=-1)
-Jy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,pi/4+pi/2; sp=1)
+Jx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,0.0; sp=-1)
+Jy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,0.0.+pi/2; sp=1)
 
 w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
 Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
@@ -119,22 +118,22 @@ function hall_theta(lat,ϕG,u0,Γ,N)
     Mk0,_ = cal_BdG(lat,ϕG,u0,Γ)
     Xw = Array{ComplexF64}(undef,2,N)
     θ = range(0,2pi,N)
-    w = [range(0,1.5,50); range(1.6,4.4,18)]#; range(4.45,6.0,50)]
+    w = [range(0,1.5,50); range(1.6,3,10)]#; range(4.45,6.0,50)]
     for i in 1:N
-        Jsx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
-        Jsy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
-        Jy, Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        J1s,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
+        J2,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        J2s,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
     
-        Xw1 = Green1(Mk0,w,Jsx,Jy)./lat.Sunit
+        Xw1 = Green1(Mk0,w,J1s,J2)./lat.Sunit
         fig = Figure(size=(400,700))
 
         str = myfilter(θ[i]/pi)
-        series(fig[1,1],w,hcat(reim(Xw1)...)',marker=:circle,axis=(limits=(0,6,-0.1,0.1),
+        series(fig[1,1],w,hcat(reim(Xw1)...)',marker=:circle,axis=(limits=(0,3,-0.1,0.1),
                 title=L"\sigma_{xy}^s,\quad \theta=%$(str)\pi")
         )
 
-        Xw2 = Green1(Mk0,w,Jsy,Jy)./lat.Sunit
-        series(fig[2,1],w,hcat(reim(Xw2)...)',marker=:circle,axis=(limits=(0,6,-0.1,0.1),
+        Xw2 = Green1(Mk0,w,J2s,J2)./lat.Sunit
+        series(fig[2,1],w,hcat(reim(Xw2)...)',marker=:circle,axis=(limits=(0,3,-0.1,0.1),
                 title=L"\sigma_{yy}^s,\quad \theta=%$(str)\pi")
         )
         display(fig)
@@ -145,9 +144,9 @@ function hall_theta(lat,ϕG,u0,Γ,N)
 end
 Xθ = hall_theta(lat,ϕG,u0,Γ,41)
 xt = ([range(0,2pi,9);],[L"%$(i)\pi/4" for i in 0:8])
-fig,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}^s",L"\sigma_{\theta+\pi/2,\theta+\pi/2}^s"])
+fig2,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}^s",L"\sigma_{\theta+\pi/2,\theta+\pi/2}^s"])
 axislegend()
-fig
+fig2
 
 
 ## --- symmetry of BdG state ---
@@ -429,3 +428,67 @@ begin
     axislegend(ax; position = :lt, labelsize = 15, nbanks=1)
     fig
 end
+
+
+# ---------------------------------------------------
+##              spin hall of fermi gases
+# ---------------------------------------------------
+lat = set_lattice(8.0,1.5,1.0)
+bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],[128,128])
+@time s2 = FermiHall(bz,lat,0.0)
+
+sum(s2)/128^2/lat.Sunit|>println
+krn = range(0,1,128)
+SpinHall.trapz((krn,krn),s2[1,:,:])/lat.Sunit|>println
+fig = Figure(size=(450,400))
+ax,hm = heatmap(fig[1,1],s2[2,:,:]./lat.Sunit,axis=(aspect=1,))
+Colorbar(fig[1,2],hm)
+fig
+
+##  网格非均匀划分
+sg2(x::Real)=sign(x)*x^2
+ktmp = sg2.(range(-1,1,64)).*0.5.+0.5
+bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],ktmp,ktmp)
+scatter(reshape(bz[1,:,:],:),reshape(bz[2,:,:],:),axis=(aspect=1,),markersize=3)|>display
+@time s0 = FermiHall(bz,lat,0.0)
+SpinHall.trapz((ktmp,ktmp),s0[2,:,:])*2/lat.Sunit|>println
+
+ftmp = s0[1,:,:]./lat.Sunit
+ftmp[abs.(ftmp).>50].=NaN64
+fig,_,hm = heatmap(fig[1,1],ktmp,ktmp,ftmp,axis=(aspect=1,),figure=(size=(450,400),))
+Colorbar(fig[1,2],hm)
+fig
+
+##  验证各向异性
+function fermin_theta(ktmp,bz,lat,θ)
+    Nθ = length(θ)
+    s = Array{Float64}(undef,4,Nθ)
+    for i in 1:Nθ
+        stmp = FermiHall(bz,lat,θ[i])
+
+        fig = Figure(size=(450,800))
+        ftmp = stmp[1,:,:]./lat.Sunit
+        ftmp[abs.(ftmp).>50].=NaN64
+        _,hm1 = heatmap(fig[1,1],ktmp,ktmp,ftmp,axis=(aspect=1,))
+        Colorbar(fig[1,2],hm1)
+
+        ftmp = stmp[3,:,:]./lat.Sunit
+        ftmp[abs.(ftmp).>10].=NaN64
+        _,hm2 = heatmap(fig[2,1],ktmp,ktmp,ftmp,axis=(aspect=1,))
+        Colorbar(fig[2,2],hm2)
+        fig|>display
+
+        for j in 1:4
+            s[j,i]=SpinHall.trapz((ktmp,ktmp),stmp[j,:,:])/lat.Sunit
+        end
+    end
+    return s
+end
+
+ktmp = sg2.(range(-1,1,32)).*0.5.+0.5
+bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],ktmp,ktmp)
+scatter(reshape(bz[1,:,:],:),reshape(bz[2,:,:],:),axis=(aspect=1,),markersize=3)|>display
+
+θ = range(0,pi,5)
+s = fermin_theta(ktmp,bz,lat,θ)
+series(θ,s, marker=:circle)

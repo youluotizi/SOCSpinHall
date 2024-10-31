@@ -1,7 +1,7 @@
 #---------------------------------------------------------
 #           Hall conductivity
 #---------------------------------------------------------
-export cal_Ju,cal_Jθ,Green1,eigBdG,Xspec1,Xspec2
+export cal_Ju,cal_Jθ,Green1,eigBdG,Xspec1,Xspec2,FermiHall
 
 function cal_Ju(
     ϕ::Vector{ComplexF64},
@@ -45,8 +45,6 @@ function cal_Jθ(
 
     k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
     k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
-    # k3 = (-kk[1]+d*cos(θ),-kk[2]+d*sin(θ))
-    # k4 = (-kk[1]-d*cos(θ),-kk[2]-d*sin(θ))
 
     for iQ in 1:NQ
         tmp = (k1[1]+Kvec[1,iQ])^2+(k1[2]+Kvec[2,iQ])^2
@@ -196,9 +194,75 @@ function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
     tmp=0.0im
     @views for nn in 2:Nm
         w = nn==2 ? 1e-6 : 0.0
-        tmp+=-2*imag(mz*dot(v1,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0))/(w+E0-ben[nn])^2
+        tmp+=2*imag(mz*dot(v1,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0))/(w+E0-ben[nn])^2
         # tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v1)*conj(mz)/(w+ben[nn]-E0)^2
     end
 
     return tmp
+end
+
+# ---------------------------------------
+#       nointeracting Fermi gas
+# ---------------------------------------
+function cal_Jθ(
+    kk::Vector{Float64},
+    Kvec::Array{Float64,2},
+    θ::Float64;
+    d::Float64=1e-4, #  中心差分步长
+    sp::Int=1 # sp=±1 代表粒子流和自旋流
+)
+    NQ=size(Kvec,2)
+    Ju=Vector{Float64}(undef,2*NQ)
+    k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
+    k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
+
+    for iQ in 1:NQ
+        tmp = (k1[1]+Kvec[1,iQ])^2+(k1[2]+Kvec[2,iQ])^2
+        tmp-= (k2[1]+Kvec[1,iQ])^2+(k2[2]+Kvec[2,iQ])^2
+        Ju[iQ]= tmp/(2*d)
+        Ju[iQ+NQ]=Ju[iQ]*sp
+    end
+
+    return Diagonal(Ju)
+end
+
+function _fermiHall(en,ev,hx,hy)
+    Nb = length(en)
+    s1 = 0.0
+    E1 = en[1]
+    @views for i in 3:Nb
+        abs(en[i]-E1)<1e-6 && continue
+        tmp = dot(ev[:,1],hx,ev[:,i])*dot(ev[:,i],hy,ev[:,1])
+        s1+=2*imag(tmp)/(en[i]-E1)^2
+    end
+
+    s2 = 0.0
+    E2 = en[2]
+    @views for i in 3:Nb
+        abs(en[i]-E2)<1e-6 && continue
+        tmp = dot(ev[:,2],hx,ev[:,i])*dot(ev[:,i],hy,ev[:,2])
+        s2+=2*imag(tmp)/(en[i]-E2)^2
+    end
+    return s1,s2
+end
+function FermiHall(bz,lat,θ)
+    (;v0,m0,mz,NK,Kvec,Kcoe) = lat
+    mat=zeros(ComplexF64,2*NK,2*NK)
+    matoff!(mat,v0,m0,Kcoe)
+
+    _,Nx,Ny = size(bz)
+    σs = Array{Float64}(undef,4,Nx,Ny)
+    lmz = abs(mz)<1e-9
+    for iy in 1:Ny,ix in 1:Nx
+        matdiag!(mat,bz[:,ix,iy],Kvec, v0, mz)
+        en,ev=eigen(Hermitian(mat))
+        lmz && zeeman_split!(ev)
+
+        hsx = cal_Jθ(bz[:,ix,iy],Kvec,θ;sp=-1)
+        hy = cal_Jθ(bz[:,ix,iy],Kvec,θ+pi/2,sp=1)
+        hsy = cal_Jθ(bz[:,ix,iy],Kvec,θ+pi/2,sp=-1)
+        σs[1:2,ix,iy].= _fermiHall(en,ev,hsx,hy)
+        σs[3:4,ix,iy].= _fermiHall(en,ev,hsy,hy)
+    end
+    return σs
 end

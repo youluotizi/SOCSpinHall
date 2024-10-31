@@ -99,6 +99,17 @@ function mymesh(plist::Vector{<:AbstractVector{Float64}},nn::Vector{Int})
     end
     return bz
 end
+# 非均匀网格划分
+function mymesh(plist::Vector{<:AbstractVector{Float64}},n1::Vector{Float64},n2::Vector{Float64})
+    p=plist[1]
+    b1=plist[2]
+    b2=plist[3]
+    bz=Array{Float64,3}(undef,2,length(n1),length(n2))
+    for j in eachindex(n2),i in eachindex(n1)
+        bz[:,i,j].= p.+n1[i].*b1.+n2[j].*b2
+    end
+    return bz
+end
 
 # 适合N维情况
 function mymesh2(Klist::Vector{<:AbstractVector{Float64}},nn::Array{Int,1})

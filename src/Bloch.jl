@@ -561,7 +561,7 @@ end
 
 function zeeman_split_sxy!(ev::Array{ComplexF64,2})
     Nb=size(ev,2)
-    isodd(Nb) && println("sigmazeig error")
+    @assert iseven(Nb) "sigmazeig error"
     Nb=round(Int,Nb/2)
     pertu=Array{ComplexF64,2}(undef,2,2)
 
@@ -584,6 +584,6 @@ function zeeman_split_sxy!(ev::Array{ComplexF64,2})
             ev[:,2*ii].=vtmp[:,1]
         end 
     end
-    gaugev!(ev)
+    # gaugev!(ev)
 end
 
