@@ -1,7 +1,7 @@
 #---------------------------------------------------------
 #           Hall conductivity
 #---------------------------------------------------------
-export cal_Ju,cal_Jθ,Green1,eigBdG,Xspec1,Xspec2,FermiHall
+export cal_Ju,cal_Jθ,Green1,eigBdG,Xspec1,Xspec2,Hall2ed,FermiHall,Hall_time,cal_Dθ
 
 function cal_Ju(
     ϕ::Vector{ComplexF64},
@@ -19,29 +19,28 @@ function cal_Ju(
         Dhu[iQ]=2*(kk[u]+Kvec[u,iQ])
         Dhu[iQ+NQ]=Dhu[iQ]*sp
 
-        Dhu[iQ+Nm]=-2*(-kk[u]+Kvec[u,iQ])
+        Dhu[iQ+Nm]=2*(-kk[u]+Kvec[u,iQ])
         Dhu[iQ+Nm+NQ]=Dhu[iQ+Nm]*sp
     end
     for iQ in 1:Nm
         Ju[iQ]=Dhu[iQ]*ϕ[iQ]
-        Ju[iQ+Nm]=Dhu[iQ+Nm]*(-1)*conj(ϕ[iQ])
+        Ju[iQ+Nm]=Dhu[iQ+Nm]*conj(ϕ[iQ])
     end
 
     return Ju,Diagonal(Dhu)
 end
-function cal_Jθ(
-    ϕ::Vector{ComplexF64},
-    kk::Vector{Float64},
+
+# diag[∇h(k), ∇h^*(-k)]
+function cal_Dθ(
+    kk::AbstractVector{Float64},
     Kvec::Array{Float64,2},
     θ::Float64;
     d::Float64=1e-4, #  中心差分步长
-    sp::Int=1 # sp=±1 代表粒子流和自旋流
+    sp::Int=1        # sp=±1 代表粒子流和自旋流
 )
     NQ=size(Kvec,2)
     Nm=NQ*2
-
-    Ju=Vector{ComplexF64}(undef,Nm*2)
-    Dhu=similar(Ju)
+    Dhu=Vector{Float64}(undef,Nm*2)
 
     k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
     k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
@@ -54,17 +53,31 @@ function cal_Jθ(
 
         tmp = (-k1[1]+Kvec[1,iQ])^2+(-k1[2]+Kvec[2,iQ])^2
         tmp-= (-k2[1]+Kvec[1,iQ])^2+(-k2[2]+Kvec[2,iQ])^2
-        Dhu[iQ+Nm]=tmp/(2*d)
+        Dhu[iQ+Nm]=tmp/(-2*d)
         Dhu[iQ+Nm+NQ]=Dhu[iQ+Nm]*sp
     end
-    for iQ in 1:Nm
-        Ju[iQ]=Dhu[iQ]*ϕ[iQ]
-        Ju[iQ+Nm]=Dhu[iQ+Nm]*(-1)*conj(ϕ[iQ])
-    end
-
-    return Ju,Diagonal(Dhu)
+    return Diagonal(Dhu)
 end
 
+function cal_Jθ(
+    ϕ::Vector{ComplexF64},
+    kk::Vector{Float64},
+    Kvec::Array{Float64,2},
+    θ::Float64;
+    d::Float64=1e-4, #  中心差分步长
+    sp::Int=1        # sp=±1 代表粒子流和自旋流
+)
+    Nm = size(Kvec,2)*2 
+    Dhu = cal_Dθ(kk,Kvec,θ; sp=sp,d=d)
+    Ju = Vector{ComplexF64}(undef,Nm*2)
+    for iQ in 1:Nm
+        Ju[iQ] = Dhu[iQ,iQ]*ϕ[iQ]
+        Ju[iQ+Nm] = Dhu[iQ+Nm,iQ+Nm]*conj(ϕ[iQ])
+    end
+    return Ju
+end
+
+#  finite frequency Green function
 function Green1(
     Mk0::Matrix{ComplexF64},
     w::AbstractVector{Float64},
@@ -88,6 +101,7 @@ function Green1(
     return Xw
 end
 
+#  zero-frequency Green function
 function Green1(
     Mk0::Matrix{ComplexF64},
     Jx::AbstractVector{ComplexF64},
@@ -113,28 +127,12 @@ end
 
 
 # 谱分解计算响应
-
-function eigBdG(Mk0)
-    Nm=round(Int,size(Mk0,1)/2)
-    tz=Diagonal([ones(Nm);fill(-1.0,Nm)])
-
-    ben,bev=eigen(tz*Mk0)
-    pt=sortperm(real.(ben))
-    pt.=[pt[Nm+1:end];reverse(pt[1:Nm])]
-    ben.=ben[pt]
-    bev.=bev[:,pt]
-
-    norBev!(bev)
-    gaugev!(bev)
-    return ben,bev
-end
-
 function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     Nm=round(Int,length(ben)/2)
     Nw=length(w)
     Xw=zeros(ComplexF64,Nw)
 
-    v0=[ϕG; -1.0.*conj.(ϕG)]
+    v0=[ϕG; conj.(ϕG)]
     E0=ben[1]
     for iw in 1:Nw
         ww = abs(w[iw])>5e-6 ? w[iw]+1im*η : 5e-6+1im*η
@@ -142,39 +140,43 @@ function Xspec1(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
         @views for nn in 2:Nm
             tmp+=dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
             tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)/(ww+ben[nn]-E0)
-            # if nn <13
-            #     print(nn,", ",expshow(dot(v0,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)))
-            #     println(", ",expshow(dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v0)))
-            # end
         end
         Xw[iw]=tmp*1im/ww
     end
     return Xw
 end
 
+# ⟨ϕ|σ|v₂⟩×⟨v₂|j|vₙ⟩⟨vₙ|j|ϕ⟩，有限频
 function Xspec2(w::AbstractArray{Float64},Hx,Hy,ben,bev,ϕG; η::Float64=0.0)
     Nm=round(Int,length(ben)/2)
     Nw=length(w)
     Xw=zeros(ComplexF64,Nw)
 
     v0=[ϕG; conj.(ϕG)]
+    v1=similar(v0)
+    if abs(ben[2]-ben[1])<1e-6
+        v1.=[ϕG2; zeros(ComplexF64, Nm)]
+    else
+        v1.=bev[:,2]
+    end
     E0=ben[1]
 
     NK = round(Int,length(ben)/4)
     sz = Diagonal([ones(NK);fill(-1.0,NK);ones(NK);fill(-1.0,NK)])
-    mz = dot(v0,sz,bev[:,2])
+    mz = dot(v0,sz,v1)
     for iw in 1:Nw
         ww = abs(w[iw])>5e-5 ? w[iw]+1im*η : 5e-5+1im*η
         tmp=0.0im
         @views for nn in 2:Nm
-            tmp+=mz*dot(bev[:,2],Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
-            tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,bev[:,2])*conj(mz)/(ww+ben[nn]-E0)
+            tmp+=mz*dot(v1,Hx,bev[:,nn])*dot(bev[:,nn],Hy,v0)/(ww-ben[nn]+E0)
+            tmp-=dot(v0,Hy,bev[:,nn])*dot(bev[:,nn],Hx,v1)*conj(mz)/(ww+ben[nn]-E0)
         end
         Xw[iw]=tmp*1im/ww
     end
     return Xw
 end
 
+# ⟨ϕ|σ|v₂⟩×⟨v₂|j|vₙ⟩⟨vₙ|j|ϕ⟩,零频
 function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
     Nm=round(Int,length(ben)/2)
     v0=[ϕG; conj.(ϕG)]
@@ -201,6 +203,50 @@ function Xspec2(Hx,Hy,ben,bev,ϕG,ϕG2)
     return tmp
 end
 
+# ---------------------------------------------
+#     second order Bogoliubov contribution
+# ---------------------------------------------
+function _Hall2ed(en,ev,j1,j2,nE)
+    Nb = round(Int, length(en)/2)
+    s = 0.0im
+    @views @inbounds for n in 1:2*Nb,m in 1:2*Nb
+        a = nE[m]-nE[n]
+        a == 0 && continue
+        s-=0.5im*a*dot(ev[:,n],j1,ev[:,m])*dot(ev[:,m],j2,ev[:,n])/(en[m]-en[n])^2
+    end
+    return s
+end
+
+function Hall2ed(en,ev,bz,Kvec;θ::Tuple{Float64,Float64}=(0.0,pi/2),sp::Tuple{Int,Int}=(-1,1))
+    Nb = round(Int, size(en,1)/2)
+    nE = vcat(zeros(Int,Nb),fill(-1,Nb))
+    s = Array{ComplexF64}(undef,size(en,2),size(en,3))
+    Threads.@threads for iy in axes(en,3)
+        @views for ix in axes(en,2)
+            Dhx = cal_Dθ(bz[:,ix,iy],Kvec,θ[1]; sp=sp[1])
+            Dhy = cal_Dθ(bz[:,ix,iy],Kvec,θ[2]; sp=sp[2])
+            s[ix,iy] = _Hall2ed(en[:,ix,iy],ev[:,:,ix,iy],Dhx,Dhy,nE)
+        end
+    end
+    return s
+end
+
+function Qudep(ev)
+    _,Nb,Nx,Ny = size(ev)
+    Nb = round(Int, Nb/2)
+    ndep = Array{ComplexF64}(undef,Nx,Ny)
+    Threads.@threads for iy in axes(ev,4)
+        for ix in axes(ev,3)
+            s = -Nb+0.0im
+            @views for ib in Nb+1:2*Nb
+                s+=dot(ev[:,ib,ix,iy],ev[:,ib,ix,iy])
+            end
+            ndep[ix,iy] = s/2
+        end
+    end
+    return ndep
+end
+
 # ---------------------------------------
 #       nointeracting Fermi gas
 # ---------------------------------------
@@ -209,14 +255,13 @@ function cal_Jθ(
     Kvec::Array{Float64,2},
     θ::Float64;
     d::Float64=1e-4, #  中心差分步长
-    sp::Int=1 # sp=±1 代表粒子流和自旋流
+    sp::Int=1        # sp=±1 代表粒子流和自旋流
 )
-    NQ=size(Kvec,2)
-    Ju=Vector{Float64}(undef,2*NQ)
+    Ju=Vector{Float64}(undef,2*size(Kvec,2))
     k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
     k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
 
-    for iQ in 1:NQ
+    for iQ in axes(Kvec,2)
         tmp = (k1[1]+Kvec[1,iQ])^2+(k1[2]+Kvec[2,iQ])^2
         tmp-= (k2[1]+Kvec[1,iQ])^2+(k2[2]+Kvec[2,iQ])^2
         Ju[iQ]= tmp/(2*d)
@@ -265,4 +310,17 @@ function FermiHall(bz,lat,θ)
         σs[3:4,ix,iy].= _fermiHall(en,ev,hsy,hy)
     end
     return σs
+end
+
+# time depend Hall
+function Hall_time(ϕG,en,ev,J1,J2,t;η::Float64=0.0)
+    Nb = length(ϕG)
+    Vg = [ϕG; conj.(ϕG)]
+    s = 0.0im
+    @views for n in 2:Nb
+        tmp = dot(Vg,J1,ev[:,n])*dot(ev[:,n],J2,Vg)/(en[n])^2
+        tmp*= 1-cis((1im*η-en[n])*t)
+        s += tmp - conj(tmp)
+    end
+    return s*(-1im)
 end

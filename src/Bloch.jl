@@ -559,7 +559,7 @@ function zeeman_split!(ev::AbstractArray{ComplexF64,2})
     end
 end
 
-function zeeman_split_sxy!(ev::Array{ComplexF64,2})
+function zeeman_split_sxy!(ev::AbstractArray{ComplexF64,2})
     Nb=size(ev,2)
     @assert iseven(Nb) "sigmazeig error"
     Nb=round(Int,Nb/2)

@@ -150,7 +150,7 @@ function norBev!(bv::AbstractMatrix{<:Number}; V0_len::Float64=1.0)
             tmp-=abs2(bv[jj+lenv,ii])
         end
         tmp=abs(tmp)
-        if tmp<1e-5
+        if tmp<1e-6
             for jj=1:2*lenv
                 bv[jj,ii]*=V0_len
             end

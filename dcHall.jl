@@ -1,7 +1,6 @@
 using Revise
 using SpinHall
 using OrderedCollections,FileIO
-
 using CairoMakie
 set_theme!(;size=(600,400))
 const cm = 72/2.54
@@ -14,28 +13,6 @@ function set_lattice(v0, m0, gg)
     Lattice(b,v0,m0,mz,g[1],g[2],Kmax)
 end
 
-# -------------------------------------------------------------
-##                   single particle states
-# -------------------------------------------------------------
-lat = set_lattice(8.0,1.5,1.0)
-Γ = [0.0,0.0]
-kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
-en = eigband(lat,kl.k, 1:20)
-xt = (kl.r[kl.pt],["Γ","X","M","Γ"])
-fig= series(kl.r,en.-en[1]; axis=(;xticks=xt,yticks=0:2:12),color=repeat(Makie.wong_colors(),4))
-
-
-## --- some 2D plot ---
-M = -0.5.*(lat.b[:,1].+lat.b[:,2])
-bz = mymesh([M, lat.b[:,1], lat.b[:,2]].*0.5, [24,24])
-x = eigen2D(lat,bz,1:12)
-
-fig,ax,hm = heatmap(x.bcav[1,:,:])
-Colorbar(fig[1,2],hm)
-fig|>display
-x.bcav[:,12,12].-cal_Bcav(lat, Γ, 1:12)
-
-
 # ---------------------------------------------------
 ##          Ground state
 # ---------------------------------------------------
@@ -43,9 +20,9 @@ lat = set_lattice(8.0,1.5,1.0)
 Γ = [0.0,0.0]
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
-gs=[1,cispi(-0.25), zeros(Nopt-2)...]
+init_gs=[1,cispi(-0.25), zeros(Nopt-2)...]
 
-ϕG,u0,xopt=main_opt(E0, ϕ0, lat; gs=gs, Nstep=10^5)
+ϕG,u0,xopt=main_opt(E0, ϕ0, lat; gs=init_gs, Nstep=10^5)
 mat = calmat(lat, Γ)
 @time ϕG,u0=imag_time_evl(mat, ϕG, lat; Nstep=10^4)
 SpinHall.gaugephi0!(ϕG, ϕ0)
@@ -62,67 +39,18 @@ arrows(x, x, sp[1], sp[2], arrowsize = 8, lengthscale = 1,
     arrowcolor = nsp, linecolor = nsp, axis=(;aspect=1)
 )
 
-
 # ---------------------------------------------------
-##               BdG spectrum
+##          任意角度 spin hall 
 # ---------------------------------------------------
-@time ben = main_BdG(lat,ϕG,u0,kl.k,20); ## 55.078
-fig=series(kl.r, ben[1:12,:];
-    color=repeat(Makie.wong_colors(),3),
-    figure=(;size=(1,0.63).*600),
-    linewidth=1.5,
-    axis=(;xticks=xt,yticks=range(0,10,6),ygridvisible=false)
-)
-
-## --- spectrum near Γ point ---
-kl2 = BzLine([Γ, 0.013.*lat.b[:,1]],50)
-@time ben2 = main_BdG(lat,ϕG,u0,kl2.k,2); ## 55.078
-fig=series(kl2.r, ben2;
-    marker=:circle,
-    color=Makie.wong_colors(),
-    figure=(;size=(1,0.63).*400),
-    linewidth=1.5,
-)
-
-
-# --------------------------------------------------- 
-##              Spin Hall
-# --------------------------------------------------- 
-Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Ju(ϕG,Γ,lat.Kvec; u=1,sp=-1)
-Jy,Dhy = cal_Ju(ϕG,Γ,lat.Kvec; u=2,sp=1)
-
-w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
-Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
-fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
-
-
-
-## --- 谱分解计算 Spin Hall ---
-ben,bev=eigBdG(Mk0)
-Xw2 = Xspec1(w,Dhx,Dhy,ben,bev,ϕG)./lat.Sunit
-series!(w,hcat(reim(Xw2)...)',solid_color=:red,linestyle=:dash)
-fig
-
-## --- 任意角度 spin hall -----
-Mk0,tz = cal_BdG(lat,ϕG,u0,Γ)
-Jx,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,0.0; sp=-1)
-Jy,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,0.0.+pi/2; sp=1)
-
-w = [range(0,1.5,100); range(1.6,4.4,18); range(4.45,6.0,120)]
-Xw1 = Green1(Mk0,w,Jx,Jy)./lat.Sunit
-fig = series(w,hcat(reim(Xw1)...)',marker=:circle,axis=(;limits=(nothing,(-0.1,0.1))))
-
-##
 function hall_theta(lat,ϕG,u0,Γ,N)
     Mk0,_ = cal_BdG(lat,ϕG,u0,Γ)
     Xw = Array{ComplexF64}(undef,2,N)
     θ = range(0,2pi,N)
     w = [range(0,1.5,50); range(1.6,3,10)]#; range(4.45,6.0,50)]
     for i in 1:N
-        J1s,Dhx = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
-        J2,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
-        J2s,Dhy = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
+        J1s = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
+        J2 = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
+        J2s = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=-1)
     
         Xw1 = Green1(Mk0,w,J1s,J2)./lat.Sunit
         fig = Figure(size=(400,700))
@@ -149,65 +77,8 @@ axislegend()
 fig2
 
 
-## --- symmetry of BdG state ---
-myint(ϕG,ϕG,lat.Kvec,"T")|>expshow   # T symmetry
 
-Nm = round(Int,length(ben)/2)
-phs = 1/myint(ϕG,ϕG,lat.Kvec,"S1")   # \tilde D1 symmetry
-for ii in 0:11
-    v1 = SpinHall.normalize(bev[1:Nm,ii+1])
-    a = myint(v1,v1,lat.Kvec,"S1")*phs
-    if abs(a-1)<1e-5
-        println(ii,", B1, ", expshow(a))
-    else
-        println(ii,", B2, ", expshow(a))
-    end
-end
 
-phs = 1/myint(ϕG,ϕG,lat.Kvec,"TxC2")   # Λₓr₂ symmetry
-for ii in 0:11
-    v1 = SpinHall.normalize(bev[1:Nm,ii+1])
-    a = myint(v1,v1,lat.Kvec,"TxC2")*phs
-    if abs(a-1)<1e-5
-        println(ii,", ", real(a))
-    else
-        println(ii,", ", real(a))
-    end
-end
-
-## ----  another ground state ----
-PTϕG = PTtransform(ϕG)
-Vg=[ϕG PTϕG]
-SpinHall.zeeman_split!(Vg)
-(ci = Vg'*ϕG)|>expshow|>println
-abs.(ci[1].*Vg[:,1].+ci[2].*Vg[:,2].-ϕG)|>findmax|>println
-
-ϕG1=Vg[:,1].*ci[1]
-ϕG2=Vg[:,2].*ci[2]
-
-## --- hall separation ----
-Jx1,Dhx1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=1,sp=-1)
-Jy1,Dhy1 = cal_Ju(ϕG1,Γ,lat.Kvec; u=2)
-Jx2,Dhx2 = cal_Ju(ϕG2,Γ,lat.Kvec; u=1,sp=-1)
-Jy2,Dhy2 = cal_Ju(ϕG2,Γ,lat.Kvec; u=2)
-
-Xw11 = Green1(Mk0,w,Jx1,Jy1)./lat.Sunit
-Xw22 = Green1(Mk0,w,Jx2,Jy2)./lat.Sunit
-Xw12 = Green1(Mk0,w,Jx1,Jy2)./lat.Sunit
-Xw21 = Green1(Mk0,w,Jx2,Jy1)./lat.Sunit
-##
-
-fig=series(w,hcat(reim(Xw11.+Xw22)...)',marker=:circle,solid_color=:black,axis=(;limits=(nothing,(-0.1,0.1))), labels=["re 11+22","im 11+22"])
-series!(w,hcat(reim(Xw12.+Xw21)...)',linestyle=:dash,solid_color=:red,labels=["re 12+21","im 12+21"])
-series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,solid_color=:blue,labels=["re 11+12+..","im 11+12+.."])
-axislegend(position=:ct)
-fig|>display
-
-##
-fig = series(w,[imag.(Xw2) real.(Xw2)]',marker=:circle,solid_color=:blue,labels=["re σs","im σs"],axis=(;limits=(nothing,(-0.1,0.1))))
-series!(w,hcat(reim(Xw12.+Xw21.+Xw11.+Xw22)...)',linestyle=:dash,labels=["re 11+12+..","im 11+12+.."],solid_color=:red)
-axislegend(position=:ct)
-fig
 
 
 
@@ -331,6 +202,8 @@ begin
 end
 
 
+
+
 # ---------------------------------------------------
 ##     Hall conductivity as function of V_0
 # ---------------------------------------------------
@@ -428,67 +301,3 @@ begin
     axislegend(ax; position = :lt, labelsize = 15, nbanks=1)
     fig
 end
-
-
-# ---------------------------------------------------
-##              spin hall of fermi gases
-# ---------------------------------------------------
-lat = set_lattice(8.0,1.5,1.0)
-bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],[128,128])
-@time s2 = FermiHall(bz,lat,0.0)
-
-sum(s2)/128^2/lat.Sunit|>println
-krn = range(0,1,128)
-SpinHall.trapz((krn,krn),s2[1,:,:])/lat.Sunit|>println
-fig = Figure(size=(450,400))
-ax,hm = heatmap(fig[1,1],s2[2,:,:]./lat.Sunit,axis=(aspect=1,))
-Colorbar(fig[1,2],hm)
-fig
-
-##  网格非均匀划分
-sg2(x::Real)=sign(x)*x^2
-ktmp = sg2.(range(-1,1,64)).*0.5.+0.5
-bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],ktmp,ktmp)
-scatter(reshape(bz[1,:,:],:),reshape(bz[2,:,:],:),axis=(aspect=1,),markersize=3)|>display
-@time s0 = FermiHall(bz,lat,0.0)
-SpinHall.trapz((ktmp,ktmp),s0[2,:,:])*2/lat.Sunit|>println
-
-ftmp = s0[1,:,:]./lat.Sunit
-ftmp[abs.(ftmp).>50].=NaN64
-fig,_,hm = heatmap(fig[1,1],ktmp,ktmp,ftmp,axis=(aspect=1,),figure=(size=(450,400),))
-Colorbar(fig[1,2],hm)
-fig
-
-##  验证各向异性
-function fermin_theta(ktmp,bz,lat,θ)
-    Nθ = length(θ)
-    s = Array{Float64}(undef,4,Nθ)
-    for i in 1:Nθ
-        stmp = FermiHall(bz,lat,θ[i])
-
-        fig = Figure(size=(450,800))
-        ftmp = stmp[1,:,:]./lat.Sunit
-        ftmp[abs.(ftmp).>50].=NaN64
-        _,hm1 = heatmap(fig[1,1],ktmp,ktmp,ftmp,axis=(aspect=1,))
-        Colorbar(fig[1,2],hm1)
-
-        ftmp = stmp[3,:,:]./lat.Sunit
-        ftmp[abs.(ftmp).>10].=NaN64
-        _,hm2 = heatmap(fig[2,1],ktmp,ktmp,ftmp,axis=(aspect=1,))
-        Colorbar(fig[2,2],hm2)
-        fig|>display
-
-        for j in 1:4
-            s[j,i]=SpinHall.trapz((ktmp,ktmp),stmp[j,:,:])/lat.Sunit
-        end
-    end
-    return s
-end
-
-ktmp = sg2.(range(-1,1,32)).*0.5.+0.5
-bz = mymesh([[0.0,0.0],lat.b[:,1],lat.b[:,2]],ktmp,ktmp)
-scatter(reshape(bz[1,:,:],:),reshape(bz[2,:,:],:),axis=(aspect=1,),markersize=3)|>display
-
-θ = range(0,pi,5)
-s = fermin_theta(ktmp,bz,lat,θ)
-series(θ,s, marker=:circle)
