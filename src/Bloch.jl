@@ -300,10 +300,25 @@ function eigband(lat::Lattice,kk::Array{Float64,2},nb::AbstractVector{Int})
     en=Array{Float64,2}(undef,nb[end]-nb[1]+1,Nk)
     
     @inbounds for ik in 1:Nk
-        @views matdiag!(mat,kk[:,ik],lat.Kvec,lat.v0,lat.mz)
-        en_tmp = eigvals(Hermitian(mat))
-        pt = partialsortperm(en_tmp,nb[1]:nb[end])
-        en[:,ik].= en_tmp[pt]
+        matdiag!(mat,kk[:,ik],lat.Kvec,lat.v0,lat.mz)
+        en[:,ik].= eigvals(Hermitian(mat),nb[1]:nb[end])
+    end
+    return en
+end
+
+"""
+    eigband(lat, bz::Matrix, nb)
+计算多个动量点的本征能量
+"""
+function eigband(lat::Lattice,bz::Array{Float64,3},nb::AbstractVector{Int})
+    mat=zeros(ComplexF64,2*lat.NK,2*lat.NK)
+    matoff!(mat,lat.v0,lat.m0,lat.Kcoe)
+    _,Nx,Ny = size(bz)
+    en=Array{Float64}(undef,nb[end]-nb[1]+1,Nx,Ny)
+    
+    @inbounds for iy in 1:Ny,ix in 1:Nx
+        matdiag!(mat,bz[:,ix,iy],lat.Kvec,lat.v0,lat.mz)
+        en[:,ix,iy].= eigvals(Hermitian(mat),nb[1]:nb[end])
     end
     return en
 end
@@ -338,6 +353,31 @@ function eigenband(lat::Lattice,kk::Array{Float64,2},nb::AbstractVector{Int})
         en[:,ik].= en_tmp[pt]
         ev[:,:,ik].= ev_tmp[:,pt]
         mz && zeeman_split!(view(ev,:,:,ik))
+    end
+    return en,ev
+end
+
+"""
+    eigband(lat, kk::Matrix)
+计算多个动量点的本征能量和态
+"""
+function eigenband(lat::Lattice,kk::Array{Float64,3},nb::AbstractVector{Int})
+    mat=zeros(ComplexF64,2*lat.NK,2*lat.NK)
+    matoff!(mat,lat.v0,lat.m0,lat.Kcoe)
+
+    _,Nx,Ny=size(kk)
+    Nb=nb[end]-nb[1]+1
+    en=Array{Float64}(undef,Nb,Nx,Ny)
+    ev=Array{ComplexF64}(undef,2*lat.NK,Nb,Nx,Ny)
+
+    mz = abs(lat.mz)<1e-9
+    @inbounds for iy in 1:Ny, ix in 1:Nx
+        @views matdiag!(mat,kk[:,ix,iy],lat.Kvec, lat.v0, lat.mz)
+        en_tmp,ev_tmp=eigen(Hermitian(mat))
+        pt = partialsortperm(en_tmp,nb[1]:nb[end])
+        en[:,ix,iy].= en_tmp[pt]
+        ev[:,:,ix,iy].= ev_tmp[:,pt]
+        mz && zeeman_split!(view(ev,:,:,ix,iy))
     end
     return en,ev
 end
@@ -424,7 +464,7 @@ end
 计算矩阵元⟨ψ|σ_z|ϕ⟩
 """
 function dot_sz(ψ::AbstractVector{ComplexF64},ϕ::AbstractVector{ComplexF64})
-    lenev = round(Int,length(ψ)/2)
+    lenev = div(length(ψ),2)
     sgz = 0.0im
     for ii in 1:lenev
         sgz+=conj(ψ[ii])*ϕ[ii]
@@ -446,7 +486,7 @@ dot_sz(ϕ::AbstractVector{ComplexF64})=dot_sz(ϕ,ϕ)
 计算矩阵元⟨ψ|σ_x|ϕ⟩
 """
 function dot_sx(ψ::AbstractVector{ComplexF64},ϕ::AbstractVector{ComplexF64})
-    lenev=round(Int,length(ψ)/2)
+    lenev=div(length(ψ),2)
     sgx = 0.0im
     for ii in 1:lenev
         sgx+=conj(ψ[ii])*ϕ[ii+lenev]
@@ -463,7 +503,7 @@ dot_sx(ev::AbstractVector{ComplexF64})=dot_sx(ev,ev)
 
 "dot_sy(ψ, ϕ), 计算矩阵元⟨ψ|σ_y|ϕ⟩"
 function dot_sy(ψ::AbstractVector{ComplexF64},ϕ::AbstractVector{ComplexF64})
-    lenev=round(Int,length(ψ)/2)
+    lenev=div(length(ψ),2)
     sgy = 0.0im
     for ii in 1:lenev
         sgy+=(conj(ψ[ii+lenev])*ϕ[ii]-conj(ψ[ii])*ϕ[ii+lenev])*1im
@@ -482,7 +522,7 @@ dot_sy(ev::AbstractVector{ComplexF64})=dot_sy(ev,ev)
 计算矩阵元⟨ψ|σ_x+σ_y|ϕ⟩/√2
 """
 function dot_sxy(ψ::AbstractVector{ComplexF64},ϕ::AbstractVector{ComplexF64})
-    lenev=round(Int,length(ψ)/2)
+    lenev=div(length(ψ),2)
     s1=s2=0.0im
     for ii in 1:lenev
         s1+=conj(ψ[ii+lenev])*ϕ[ii]
@@ -535,7 +575,7 @@ end
 function zeeman_split!(ev::AbstractArray{ComplexF64,2})
     Nb=size(ev,2)
     @assert iseven(Nb) "sigmazeig error"
-    Nb=round(Int,Nb/2)
+    Nb=div(Nb,2)
     pertu=Array{ComplexF64}(undef, 2, 2)
 
     vtmp=Array{ComplexF64}(undef,size(ev,1),2)

@@ -68,7 +68,7 @@ function rkw(
                 ψ[iQ]+=(dt/6)*(K1[iQ]+2*K2[iQ]+2*K3[iQ]+K4[iQ])
             end
         end
-        klist[ :,ii].= FF(t,k,r)
+        klist[:,ii].= FF(t,k,r)
         Threads.@threads for iQ in 1:2*NK
             ψtmp[iQ,ii]=ψ[iQ]
         end

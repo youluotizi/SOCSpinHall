@@ -45,7 +45,7 @@ using JLD2,FileIO
 # -------------------------------------------------------------
 ##                   single particle states
 # -------------------------------------------------------------
-lat = set_lattice(4.0,2.0,1.0,0.0)
+lat = set_lattice(8.0,1.5,1.0,0.0)
 Γ = [0.0,0.0]
 kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
 en = eigband(lat,kl.k, 1:20)
@@ -56,7 +56,7 @@ fig= series(kl.r,en[1:12,:].-en[1]; axis=(;xticks=xt,yticks=0:2:12),color=repeat
 # ------------------------------------------------------------
 ##                  Ground state
 # ------------------------------------------------------------
-lat = set_lattice(4.0,0.65,1.0,0.0)
+lat = set_lattice(8.0,1.5,1.0,0.0)
 Γ = [0.0,0.0]
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
@@ -78,13 +78,13 @@ function rkw2(
     lat::Lattice
 )
     w = 1.0
-    T = 48pi/w         # 总时长
-    dt= 0.0002         # 计算步长
-    step = 50          # 采样间隔,i.e.每50步保存一个结果
+    T = 1.0         # 总时长
+    dt= 1e-6         # 计算步长
+    step =500          # 采样间隔,i.e.每50步保存一个结果
     Δt = dt*step
     Nsample = round(Int,T/Δt)
     Tlist = [Δt*i for i in 1:Nsample]
-    r = [cospi(0.0),sinpi(0.0)].*0.02
+    r = [cospi(0.0),sinpi(0.0)].*0.01
     k = [0.0,0.0]
     ψt,klist = RK.rkw(r,k,hk0,ψ0,lat.Kvec,dt,step,Nsample,lat.v0,lat.mz)
 
@@ -92,7 +92,7 @@ function rkw2(
 end
 
 ##
-E0,ϕ0=eigenband(lat, Γ, 1:10)
+# E0,ϕ0=eigenband(lat, Γ, 1:10)
 mat = calmat(lat, Γ)
 ψt,Tlist,klist = rkw2(mat,ϕG,lat)
 
@@ -100,20 +100,19 @@ mat = calmat(lat, Γ)
 px = [RK.momentum(ψt[:,ii],klist[:,ii],lat.Kvec,θ=0.0)[1] for ii in eachindex(Tlist)]
 py = [RK.momentum(ψt[:,ii],klist[:,ii],lat.Kvec,θ=0.0)[2] for ii in eachindex(Tlist)]
 
-series(Tlist./Er,[px py]')
+series(Tlist,[px py]')
 scatter(py)
 scatter(px,py)
 
 ##
-ii = 5380
-en,ev = eigenband(lat,klist[:,ii], 1:8)
-ev[:,2]'*ψt[:,ii]|>abs
-
 ##
-pu1 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec;θ=pi/4,spu=true)[1] for ii in eachindex(Tlist)]
-pu2 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec;θ=pi/4,spu=true)[2] for ii in eachindex(Tlist)]
-pd1 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec;θ=pi/4,spu=false)[1] for ii in eachindex(Tlist)]
-pd2 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec;θ=pi/4,spu=false)[2] for ii in eachindex(Tlist)]
+p1 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec,θ=0.0) for ii in eachindex(Tlist)]
+p2 = [RK.momentum_sp(ψt[:,ii],klist[:,ii],lat.Kvec,θ=0.0,spu=false) for ii in eachindex(Tlist)]
 
-series([pu1 pd1]')
-series([pu2 pd2]')
+p1x = [i[1] for i in p1]
+p1y = [i[2] for i in p1]
+p2x = [i[1] for i in p2]
+p2y = [i[2] for i in p2]
+series(Tlist,[p1y p2y]')
+scatter(py)
+scatter(px,py)

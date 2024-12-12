@@ -11,7 +11,7 @@ const cm = 72/2.54
 function set_lattice(v0, m0, gg)
     mz = 0.0
     g = [0.35,0.3].*gg
-    Kmax = 6
+    Kmax = 7
     b = [[1.0,1.0] [-1.0,1.0]]
     Lattice(b,v0,m0,mz,g[1],g[2],Kmax)
 end
@@ -19,13 +19,14 @@ end
 # -------------------------------------------------------------
 ##                   单粒子能谱
 # -------------------------------------------------------------
-lat = set_lattice(4.0,1.5,1.0)
+lat = set_lattice(4.0,0.5,1.0)
 Γ = [0.0,0.0]
 kl = BzLine([Γ, 0.5.*lat.b[:,1], 0.5.*(lat.b[:,1].+lat.b[:,2]), Γ],256)
 en = eigband(lat,kl.k, 1:20)
 xt = (kl.r[kl.pt],["Γ","X","M","Γ"])
 fig= series(kl.r,en.-en[1]; axis=(;xticks=xt,yticks=0:2:12),color=repeat(Makie.wong_colors(),4))
 
+# save("data/single_band.h5",OrderedDict("en"=>en,"r"=>kl.r,"pt"=>kl.pt,"para"=>[4.0,1.5]))
 
 ## --- Berry curvature ---
 M = -0.5.*(lat.b[:,1].+lat.b[:,2])
@@ -69,7 +70,7 @@ cal_Bcav(lat, k0, 1:2)
 
 
 # ---------------------------------------------------
-##               BdG spectrum
+##               Ground state and BdG spectrum
 # ---------------------------------------------------
 Nopt = 10
 E0,ϕ0=eigenband(lat, Γ, 1:Nopt)
@@ -85,12 +86,13 @@ SpinHall.gaugephi0!(ϕG, ϕ0)
 
 
 ## ----  plot ground state ----
-x = range(-pi,pi,20)
+x = range(-1.1pi,1.1pi,24)
 sp = cal_bloch_spin(Γ, ϕG, lat, x, x)
 nsp= vec(sqrt.(sp[1].^2+sp[2].^2))
 arrows(x, x, sp[1], sp[2], arrowsize = 8, lengthscale = 1,
     arrowcolor = nsp, linecolor = nsp, axis=(;aspect=1)
 )
+save("data/spin.h5",OrderedDict("x"=>collect(x),"sx"=>sp[1],"sy"=>sp[2]))
 
 ## ----  计算BdG能谱 ------
 @time ben = eig_BdG(lat,ϕG,u0,kl.k,20); ## 55.078
@@ -206,10 +208,13 @@ scatter(reshape(bz,2,:),axis=(aspect=1,),markersize=4,figure=(size=(600,500),))
 ##
 
 @time ben,bev = eigen_BdG(lat,ϕG,u0,bz,2*lat.NK);
-# using JLD2,FileIO
-# save("data/BdGsol.jld2","en",ben,"ev",bev)
 
-sxy = Hall2ed(ben,bev,bz,lat.Kvec;θ=(pi/2,0.0),sp=(1,1))
+# save("data/BdGsol.jld2","en",ben,"ev",bev)
+##
+ben = load("data/BdGsol.jld2","en")
+bev = load("data/BdGsol.jld2","ev")
+
+@time sxy = Hall2ed(ben,bev,bz,lat.Kvec;θ=(pi/2,0.0),sp=(-1,1));
 SpinHall.trapz((ktmp,ktmp),sxy)./lat.Sunit
 
 tmp = real.(sxy)
@@ -228,13 +233,22 @@ fig
 
 SpinHall.trapz((ktmp,ktmp),ndep)
 
+v1 = rand(1000)
+m1 = rand(1000,1000)
+@time SpinHall.dot(v1,SpinHall.Diagonal(m1),v1);
+@time SpinHall.dot(v1,m1,v1);
 ##
 ħ=6.62607015e-34/2pi
 ω=30*2pi
 m=87*1.66e-27
 F= 2.2732e-26
 kL = 2pi/(787e-9)
+λ = 2pi/kL
 Er = (ħ*kL)^2/2m
 F*kL/Er
 
 m*ω^2*1e-6
+x0=sqrt(ħ/m/ω)
+
+Sunit = (2pi/kL/sqrt(2))^2
+Sunit*x0*1e6*1.5*10^14

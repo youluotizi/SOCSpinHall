@@ -46,7 +46,7 @@ function hall_theta(lat,ϕG,u0,Γ,N)
     Mk0,_ = cal_BdG(lat,ϕG,u0,Γ)
     Xw = Array{ComplexF64}(undef,2,N)
     θ = range(0,2pi,N)
-    w = [range(0,1.5,50); range(1.6,3,10)]#; range(4.45,6.0,50)]
+    w = [range(0,1.5,20); range(1.6,3,10)]#; range(4.45,6.0,50)]
     for i in 1:N
         J1s = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]; sp=-1)
         J2 = cal_Jθ(ϕG,Γ,lat.Kvec,θ[i]+pi/2; sp=1)
@@ -70,24 +70,61 @@ function hall_theta(lat,ϕG,u0,Γ,N)
     end
     return (;θ, Xw)
 end
-Xθ = hall_theta(lat,ϕG,u0,Γ,41)
+Xθ = hall_theta(lat,ϕG,u0,Γ,21)
 xt = ([range(0,2pi,9);],[L"%$(i)\pi/4" for i in 0:8])
 fig2,_,_=series(Xθ.θ,real.(Xθ.Xw),marker=:circle, axis=(xticks=xt,),labels=[L"\sigma_{\theta,\theta+\pi/2}^s",L"\sigma_{\theta+\pi/2,\theta+\pi/2}^s"])
 axislegend()
 fig2
 
+save("data/anisotropy.h5",OrderedDict("Xtheta"=>real.(Xθ.Xw),"theta"=>collect(Xθ.θ)))
 
 
+## 2ed Spin hall
+ben = load("data/BdGsol.jld2","en")
+bev = load("data/BdGsol.jld2","ev")
 
+sg2(x::Real)=sign(x)*x^2
+ktmp = sg2.(range(-1,1,size(ben,3))).*0.5.+0.5
+bz = mymesh([-0.5.*(lat.b[:,1].+lat.b[:,2]),lat.b[:,1],lat.b[:,2]],ktmp,ktmp)
+function hall_theta(lat,ben,bev,bz,ktmp,N)
+    Xw = Array{ComplexF64}(undef,N)
+    θ = range(0,1pi,N)
+    t = time()
+    for i in 1:N
+        sxy = Hall2ed(ben,bev,bz,lat.Kvec;θ=(θ[i],θ[i]),sp=(-1,1));
+        Xw[i] = SpinHall.trapz((ktmp,ktmp),sxy)./lat.Sunit
 
+        tmp = real.(sxy)
+        tmp[abs.(tmp).>30].=NaN64
+        str = myfilter(θ[i]/pi)
+        fig,_,hm=heatmap(ktmp,ktmp,tmp,axis=(aspect=1,title=L"\theta=%$(str)\pi"))
+        Colorbar(fig[1,2],hm)
+        display(fig)
+        println("time,used: ",time()-t)
+        sleep(3)
+    end
+    return (;θ, Xw)
+end
+X2 = hall_theta(lat,ben,bev,bz,ktmp,21)
 
+xt = ([range(0,pi,5);],[L"%$(i)\pi/4" for i in 0:4])
+fig2,_,_=scatterlines(X2.θ,real.(X2.Xw),marker=:circle, axis=(xticks=xt,))
 
+##
+# x = load("data/anisotropy.h5")
+xt = ([range(0,2pi,9);],[L"%$(i)\pi/4" for i in 0:8])
+fig,_,_=scatterlines(x["theta"],x["Xtheta"][1,:],label=L"\sigma_{yx}",axis=(xticks=xt,))
+scatterlines!(x["theta"],x["Xtheta"][2,:],label=L"\sigma_{xx}")
+scatterlines!(x["theta"],x["Xtheta"][3,:],linestyle=:dash,label=L"$\sigma_{yx}$-qdep",marker=:xcross)
+scatterlines!(x["theta"],x["Xtheta"][4,:],linestyle=:dash,label=L"$\sigma_{xx}$-qdep",marker=:xcross)
+axislegend()
+fig
 # ---------------------------------------------------
 ##  Hall conductivity as function of M_0
 # ---------------------------------------------------
 function spinhall_M0(g0::Float64)
     t=time()
-    m0 = [range(0.03,1.73,18); range(1.76,1.99,10); range(2.02,3.2,13)]
+    m0 = range(0.03,1.5,8)#[range(0.03,1.73,18); range(1.76,1.99,10); range(2.02,3.2,13)]
     Nm0 = length(m0)
     Xw = Array{ComplexF64}(undef,7,Nm0)
     Mspin = Array{Float64}(undef,3,Nm0)

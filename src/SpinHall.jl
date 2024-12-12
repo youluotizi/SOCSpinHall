@@ -11,6 +11,8 @@ using BlackBoxOptim
 using JLD2,FileIO
 include("GroundState.jl")
 include("pwBdG.jl")
+
+using ChunkSplitters
 include("Hall.jl")
 
 include("Symm.jl")

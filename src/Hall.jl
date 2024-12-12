@@ -207,14 +207,20 @@ end
 #     second order Bogoliubov contribution
 # ---------------------------------------------
 function _Hall2ed(en,ev,j1,j2,nE)
-    Nb = round(Int, length(en)/2)
+    Nb = round(Int, size(ev,1)/2)
     s = 0.0im
-    @views @inbounds for n in 1:2*Nb,m in 1:2*Nb
-        a = nE[m]-nE[n]
-        a == 0 && continue
-        s-=0.5im*a*dot(ev[:,n],j1,ev[:,m])*dot(ev[:,m],j2,ev[:,n])/(en[m]-en[n])^2
+    v1 = Array{ComplexF64}(undef,2*Nb)
+    v2 = similar(v1)
+    @inbounds @views for n in 1:2*Nb
+        v1 .= j1*ev[:,n]
+        v2 .= j2*ev[:,n]
+        for m in 1:2*Nb
+            a = nE[m]-nE[n]
+            a == 0 && continue
+            s-=a*dot(v1,ev[:,m])*dot(ev[:,m],v2)/(en[m]-en[n])^2
+        end
     end
-    return s
+    return 0.5im*s
 end
 
 function Hall2ed(en,ev,bz,Kvec;θ::Tuple{Float64,Float64}=(0.0,pi/2),sp::Tuple{Int,Int}=(-1,1))
@@ -260,67 +266,236 @@ function cal_Jθ(
     Ju=Vector{Float64}(undef,2*size(Kvec,2))
     k1 = (kk[1]+d*cos(θ),kk[2]+d*sin(θ))
     k2 = (kk[1]-d*cos(θ),kk[2]-d*sin(θ))
-
-    for iQ in axes(Kvec,2)
+    NK = size(Kvec,2)
+    for iQ in 1:NK
         tmp = (k1[1]+Kvec[1,iQ])^2+(k1[2]+Kvec[2,iQ])^2
         tmp-= (k2[1]+Kvec[1,iQ])^2+(k2[2]+Kvec[2,iQ])^2
         Ju[iQ]= tmp/(2*d)
-        Ju[iQ+NQ]=Ju[iQ]*sp
+        Ju[iQ+NK]=Ju[iQ]*sp
     end
 
     return Diagonal(Ju)
 end
 
-function _fermiHall(en,ev,hx,hy)
-    Nb = length(en)
-    s1 = 0.0
-    E1 = en[1]
-    @views for i in 3:Nb
-        abs(en[i]-E1)<1e-6 && continue
-        tmp = dot(ev[:,1],hx,ev[:,i])*dot(ev[:,i],hy,ev[:,1])
-        s1+=2*imag(tmp)/(en[i]-E1)^2
-    end
+function _fermiHall(
+    en::AbstractVector{Float64},
+    ev::AbstractArray{<:Number,2},
+    hx::AbstractMatrix{<:Number},
+    hy::AbstractMatrix{<:Number},
+    Nb::Int = 4,
+    mu::Float64 = en[Nb]
+)
+    s_arr = zeros(Nb)
+    nth = Threads.nthreads()
+    sm_arr = Array{Float64}(undef,nth)
+    chs = chunks(1:length(en), n=nth)
 
-    s2 = 0.0
-    E2 = en[2]
-    @views for i in 3:Nb
-        abs(en[i]-E2)<1e-6 && continue
-        tmp = dot(ev[:,2],hx,ev[:,i])*dot(ev[:,i],hy,ev[:,2])
-        s2+=2*imag(tmp)/(en[i]-E2)^2
+    @views for n in eachindex(s_arr)
+        en[n]>mu-1e-12 && continue
+        v1 = hx*ev[:,n]
+        v2 = hy*ev[:,n]
+        Threads.@threads for i in 1:nth
+            s1 = 0.0
+            @views for m in chs[i]
+                en[m]<mu && continue
+                dE = en[m]-en[n]
+                abs(dE)<1e-5 && (dE = 1e-5)
+                s1+= 2*imag(dot(v1,ev[:,m])*dot(ev[:,m],v2))/dE^2
+            end
+            sm_arr[i] = s1
+        end
+        s_arr[n]=sum(sm_arr)
     end
-    return s1,s2
+    return s_arr
 end
-function FermiHall(bz,lat,θ)
+function _fermiBerry(
+    en::AbstractVector{Float64},
+    ev::AbstractArray{<:Number,2},
+    hx::AbstractMatrix{<:Number},
+    hy::AbstractMatrix{<:Number},
+    Nb::Int = 4,
+    mu::Float64 = en[Nb]
+)
+    s_arr = zeros(Nb)
+    nth = Threads.nthreads()
+    sm_arr = Array{Float64}(undef,nth)
+    chs = chunks(1:length(en), n=nth)
+
+    @views for n in eachindex(s_arr)
+        en[n]>mu-1e-12 && continue
+        v1 = hx*ev[:,n]
+        v2 = hy*ev[:,n]
+        Threads.@threads for i in 1:nth
+            s1 = 0.0
+            @views for m in chs[i]
+                m==n && continue
+                dE = en[m]-en[n]
+                abs(dE)<1e-5 && (dE = 1e-5)
+                s1+= 2*imag(dot(v1,ev[:,m])*dot(ev[:,m],v2))/dE^2
+            end
+            sm_arr[i] = s1
+        end
+        s_arr[n]=sum(sm_arr)
+    end
+    return s_arr
+end
+
+function xcsz(en,ev,jx,jy,sz)
+    s_arr = Array{Float64}(undef,2)
+    nth = Threads.nthreads()
+    sm_arr = Array{Float64}(undef,nth)
+    chs = chunks(eachindex(en), n=nth)
+    @views for n in 1:2
+        v1 = sz*ev[:,n]
+        v2 = jy*ev[:,n]
+        Threads.@threads for i in 1:nth
+            sm = 0.0im
+            for m in chs[i]
+                m == n && continue
+                dE = abs(en[m]-en[n])<1e-6 ? 1e-6 : en[m]-en[n]
+                sm+=dot(v1,ev[:,m])*dot(ev[:,m],v2)/dE^2
+            end
+            sm_arr[i] = 2*real(-1im*sm)
+        end
+        s_arr[n] = sum(sm_arr)*real(dot(ev[:,n],jx,ev[:,n]))
+    end
+    return s_arr
+end
+
+function cal_tau0(en,ev,jx,tau)
+    s_arr = Array{ComplexF64}(undef,2)
+    nth = Threads.nthreads()
+    chs = chunks(eachindex(en), n=nth)
+    @views for n in 1:2
+        v1 = jx*ev[:,n]
+        v2 = tau*ev[:,n]
+        sm_arr = Array{ComplexF64}(undef,nth)
+        Threads.@threads for i in 1:nth
+            sm = 0.0im
+            for m in chs[i]
+                m == n && continue
+                dE = abs(en[m]-en[n])<1e-6 ? 1e-6 : en[m]-en[n]
+                sm+=dot(v1,ev[:,m])*dot(ev[:,m],v2)/dE
+            end
+            sm_arr[i] = sm
+        end
+        s_arr[n] = sum(sm_arr)*1im
+    end
+    return s_arr
+end
+
+function cal_tau1(en,ev,jx,jy,tau)
+    s_arr = Array{Float64}(undef,2)
+    nth = Threads.nthreads()
+    chs = chunks(eachindex(en),n=nth)
+    @views for n in 1:2
+        v1 = jx*ev[:,n]
+        v3 = jy*ev[:,n]
+        sm=0.0
+        for m in eachindex(en)
+            m == n && continue
+            dmn = abs(en[n]-en[m])
+            dmn<1e-5 && (dmn=1e-5)
+
+            v2=tau*ev[:,m]
+            hmn = dot(ev[:,m],v3)/dmn^2
+            Threads.@threads for i in 1:nth
+                sl = 0.0im
+                sl_arr = Array{ComplexF64}(undef,nth)
+                for l in chs[i]
+                    l == n && continue
+                    dE = abs(en[l]-en[n])
+                    dE<1e-6 && (dE=1e-6)
+                    sl+=dot(v1,ev[:,l])*dot(ev[:,l],v2)/dE
+                end
+                sl_arr[i] = sl
+            end
+            sm+=2*real(sum(sl_arr)*hmn)
+        end
+        s_arr[n]=sm
+    end
+    return s_arr
+end
+
+function cal_tau2(en,ev,jx,jy,tau)
+    s_arr = Array{Float64}(undef,2)
+    nth = Threads.nthreads()
+    chs = chunks(eachindex(en), n=nth)
+    @views for n in 1:2
+        v1 = jx*ev[:,n]
+        v2 = jy*ev[:,n]
+        Threads.@threads for i in 1:nth
+            sm = 0.0im
+            sm_arr = Array{ComplexF64}(undef,nth)
+            for m in chs[i]
+                m == n && continue
+                dE = abs(en[m]-en[n])<1e-5 ? 1e-5 : en[m]-en[n]
+                sm+=dot(v1,ev[:,m])*dot(ev[:,m],v2)/dE^3
+            end
+            sm_arr[i] = 2*real(sm)
+        end
+        s_arr[n]=real(dot(ev[:,n],tau,ev[:,n]))*sum(sm_arr)
+    end
+    return s_arr
+end
+
+function FermiHall(bz,lat,Nb,mu)
     (;v0,m0,mz,NK,Kvec,Kcoe) = lat
     mat=zeros(ComplexF64,2*NK,2*NK)
     matoff!(mat,v0,m0,Kcoe)
 
     _,Nx,Ny = size(bz)
-    σs = Array{Float64}(undef,4,Nx,Ny)
+    s1 = Array{Float64}(undef,Nb,Nx,Ny)
+    s2 = similar(s1)
+    sz = similar(s1)
     lmz = abs(mz)<1e-9
     for iy in 1:Ny,ix in 1:Nx
         matdiag!(mat,bz[:,ix,iy],Kvec, v0, mz)
         en,ev=eigen(Hermitian(mat))
         lmz && zeeman_split!(ev)
 
-        hsx = cal_Jθ(bz[:,ix,iy],Kvec,θ;sp=-1)
-        hy = cal_Jθ(bz[:,ix,iy],Kvec,θ+pi/2,sp=1)
-        hsy = cal_Jθ(bz[:,ix,iy],Kvec,θ+pi/2,sp=-1)
-        σs[1:2,ix,iy].= _fermiHall(en,ev,hsx,hy)
-        σs[3:4,ix,iy].= _fermiHall(en,ev,hsy,hy)
+        J1s= cal_Jθ(bz[:,ix,iy],Kvec,0.0;sp=-1)
+        J1 = cal_Jθ(bz[:,ix,iy],Kvec,0.0,sp=1)
+        J2 = cal_Jθ(bz[:,ix,iy],Kvec,pi/2,sp=1)
+        s1[:,ix,iy].= _fermiHall(en,ev,J1s,J2,Nb,mu)
+        s2[:,ix,iy].= _fermiBerry(en,ev,J1,J2,Nb,mu)
+        for i in 1:Nb
+            sz[i,ix,iy].=real(dot_sz(ev[:,i]))
+        end
     end
-    return σs
+    return s1,s2,sz
 end
 
-# time depend Hall
-function Hall_time(ϕG,en,ev,J1,J2,t;η::Float64=0.0)
-    Nb = length(ϕG)
-    Vg = [ϕG; conj.(ϕG)]
-    s = 0.0im
-    @views for n in 2:Nb
-        tmp = dot(Vg,J1,ev[:,n])*dot(ev[:,n],J2,Vg)/(en[n])^2
-        tmp*= 1-cis((1im*η-en[n])*t)
-        s += tmp - conj(tmp)
+function FermiHall_mu(bz,lat,Nb,mu)
+    (;v0,m0,mz,NK,Kvec,Kcoe) = lat
+    mat=zeros(ComplexF64,2*NK,2*NK)
+    matoff!(mat,v0,m0,Kcoe)
+
+    _,Nx,Ny = size(bz)
+    s1 = Array{Float64}(undef,Nb,Nx,Ny,length(mu))
+    s2 = similar(s1)
+    # s3 = similar(s1)
+    sz = Array{Float64}(undef,Nb,Nx,Ny)
+    # en2d = similar(sz)
+    lmz = abs(mz)<1e-9
+    for iy in 1:Ny,ix in 1:Nx
+        matdiag!(mat,bz[:,ix,iy],Kvec, v0, mz)
+        en,ev=eigen(Hermitian(mat))
+        lmz && zeeman_split!(ev)
+        # en2d[:,ix,iy].=en[1:Nb]
+
+        J1s= cal_Jθ(bz[:,ix,iy],Kvec,0.0;sp=-1)
+        J1 = cal_Jθ(bz[:,ix,iy],Kvec,0.0,sp=1)
+        J2 = cal_Jθ(bz[:,ix,iy],Kvec,pi/2,sp=1)
+        for iu in eachindex(mu)
+            s1[:,ix,iy,iu].= _fermiHall(en,ev,J1s,J2,Nb,mu[iu])
+            s2[:,ix,iy,iu].= _fermiHall(en,ev,J1,J2,Nb,mu[iu])
+            # s3[:,ix,iy,iu].= _fermiBerry(en,ev,J1,J2,Nb,mu[iu])
+        end
+        for i in 1:Nb
+            sz[i,ix,iy]=real(dot_sz(ev[:,i]))
+        end
     end
-    return s*(-1im)
+    return (;s1,s2,sz)
+    # return (;s1,s2,s3,sz,en2d)
 end
